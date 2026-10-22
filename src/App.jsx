@@ -725,8 +725,10 @@ function App() {
     <div className="preview-ribbon"><span className="status-dot" /> GROEarnX <span>— crypto markets, portfolio information and account management</span></div>
     {view === "home" && renderHome()}
     {(view === "signin" || view === "signup") && renderAuth(view === "signup")}
-    {view === "dashboard" && renderDashboard()}
+    {view === "mfaChallenge" && renderMfaChallenge()}
+    {view === "dashboard" && (authUser ? renderDashboard() : renderAuth(false))}
     <a className="whatsapp-float" href={WHATSAPP_URL} target="_blank" rel="noreferrer" aria-label="Chat with GROEarnX support on WhatsApp"><span className="whatsapp-glyph">◉</span><span className="whatsapp-label">Chat with us</span></a>
+    {legalPage && renderLegalModal()}
     {toast && <div className="toast" role="status"><span><Icon name="info" size={18}/></span><p>{toast}</p><button aria-label="Dismiss notification" onClick={()=>setToast("")}><Icon name="close" size={15}/></button></div>}
   </div>;
 }
