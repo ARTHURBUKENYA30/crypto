@@ -873,3 +873,38 @@ main { overflow: hidden; }
 .chart-unavailable { min-height:180px; display:flex; align-items:center; justify-content:center; padding:22px; color:#8b99a9; font-size:11px; text-align:center; }
 .chart-note { display:flex; align-items:center; justify-content:center; text-align:right; width:100%; height:100%; color:#8fa2b7; font-size:9px; line-height:1.55; }
 .market-ticker-items .sparkline-empty { color:#9ba9b9; }
+
+
+/* Customer wallet and help center */
+.wallet-safety-note { display:flex; align-items:flex-start; gap:10px; margin:18px 20px; padding:13px 14px; border:1px solid #dfece6; border-radius:10px; background:#f5fbf7; color:#718579; font-size:10px; line-height:1.6; }
+.wallet-safety-note svg { flex:0 0 auto; color:#16845f; }
+.wallet-safety-note b { color:#315345; }
+.wallets-table { min-width:780px; }
+.wallet-address-cell { display:flex; align-items:center; gap:9px; max-width:340px; }
+.wallet-address-cell code { display:block; max-width:245px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#52657a; background:#f5f7fa; border:1px solid #edf0f4; border-radius:6px; padding:7px 8px; font-size:9px; }
+.wallet-address-cell .btn { flex:0 0 auto; }
+.faq-section { padding:75px 24px; background:#f2f6fa; border-top:1px solid #e6edf3; border-bottom:1px solid #e6edf3; }
+.faq-inner { max-width:1144px; margin:0 auto; display:grid; grid-template-columns:minmax(250px,.75fr) minmax(0,1.25fr); gap:65px; align-items:start; }
+.faq-intro h2 { margin:11px 0 10px; color:#14243b; font-family:Manrope,sans-serif; font-size:32px; letter-spacing:-.045em; line-height:1.2; }
+.faq-intro > p { max-width:340px; color:#7f8da0; font-size:12px; line-height:1.8; }
+.faq-contact { margin-top:24px; display:flex; flex-direction:column; align-items:flex-start; gap:10px; padding-top:18px; border-top:1px solid #e0e7ee; }
+.faq-contact b { margin-bottom:3px; color:#34475c; font-size:11px; }
+.faq-contact a { display:inline-flex; align-items:center; gap:6px; color:#12845f; font-size:11px; font-weight:800; }
+.faq-list { border-top:1px solid #dfe6ed; }
+.faq-list details { border-bottom:1px solid #dfe6ed; padding:0; }
+.faq-list summary { list-style:none; position:relative; padding:18px 35px 18px 0; color:#2c4056; cursor:pointer; font-size:12px; font-weight:800; }
+.faq-list summary::-webkit-details-marker { display:none; }
+.faq-list summary:after { content:"+"; position:absolute; right:4px; top:14px; display:grid; place-items:center; width:25px; height:25px; border:1px solid #dde5ed; border-radius:50%; color:#16835f; font-size:17px; font-weight:500; }
+.faq-list details[open] summary:after { content:"−"; background:#e8f7ef; border-color:#cfeadd; }
+.faq-list details p { max-width:690px; margin:0; padding:0 26px 18px 0; color:#7b8a9d; font-size:11px; line-height:1.8; }
+@media (max-width:900px) {
+  .faq-inner { grid-template-columns:1fr; gap:27px; }
+  .faq-intro > p { max-width:600px; }
+}
+@media (max-width:680px) {
+  .faq-section { padding:51px 18px; }
+  .faq-intro h2 { font-size:28px; }
+  .faq-list summary { padding-top:16px; padding-bottom:16px; font-size:11px; }
+  .wallet-safety-note { margin:13px; }
+  .wallet-address-cell { align-items:flex-start; flex-direction:column; gap:6px; }
+}
