@@ -62,6 +62,7 @@ function Icon({ name, size = 18 }) {
     external: <><path d="M14 4h6v6" /><path d="M20 4 10 14" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></>,
     check: <><path d="m5 12 4 4L19 6" /></>,
     clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8h.01" /></>,
   };
   return <svg {...common}>{paths[name] || paths.grid}</svg>;
 }
@@ -172,6 +173,8 @@ function App() {
   }
   function signUp(e) {
     e.preventDefault();
+    e.currentTarget.reset();
+    setProfile(p => ({ ...p, country: "", nationalId: "", drivingPermit: "" }));
     notify("Preview only: nothing was sent or stored. Connect authentication and a secure identity-verification provider before collecting real details.");
   }
   function changeRequest(key, value) { setRequest(r => ({ ...r, [key]: value })); }
@@ -312,8 +315,8 @@ function App() {
             <label>Email address<input type="email" name="email" autoComplete="email" placeholder="you@example.com" required onChange={e => !isSignup && setProfile(p => ({ ...p, email: e.target.value }))} /></label>
             <label>Password<div className="password-wrap"><input type="password" name="password" autoComplete={isSignup ? "new-password" : "current-password"} minLength={8} placeholder={isSignup ? "At least 8 characters" : "Enter password"} required /><Icon name="lock" size={16} /></div></label>
             {isSignup && <div className="identity-preview"><div className="identity-preview-heading"><span><Icon name="shield" size={16} /></span><div><b>Identity verification</b><small>National ID and driving permit fields</small></div><span className="badge-muted">Preview</span></div>
-              <label>National ID number <input name="nationalId" autoComplete="off" placeholder="For secure KYC setup only" value={profile.nationalId} onChange={e => setProfile(p => ({ ...p, nationalId: e.target.value }))} /></label>
-              <label>Driving permit number <input name="drivingPermit" autoComplete="off" placeholder="For secure KYC setup only" value={profile.drivingPermit} onChange={e => setProfile(p => ({ ...p, drivingPermit: e.target.value }))} /></label>
+              <label>National ID number <input name="nationalId" autoComplete="off" placeholder="For secure KYC setup only" defaultValue="" /></label>
+              <label>Driving permit number <input name="drivingPermit" autoComplete="off" placeholder="For secure KYC setup only" defaultValue="" /></label>
               <p>These fields are preview-only. Do not use real ID numbers: secure KYC and document retention are not configured.</p>
             </div>}
             {!isSignup && <div className="auth-options"><label className="check-row"><input type="checkbox" /> <span>Remember this device</span></label><button type="button" className="text-link" onClick={() => notify("Password reset becomes available after secure authentication is connected.")}>Forgot password?</button></div>}
