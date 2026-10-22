@@ -119,6 +119,7 @@ function App() {
   const [authUser, setAuthUser] = useState(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [walletBalances, setWalletBalances] = useState({});
+  const [wallets, setWallets] = useState([]);
   const [portfolioHistory, setPortfolioHistory] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [investmentPlans, setInvestmentPlans] = useState([]);
@@ -336,6 +337,7 @@ function App() {
     if (error) { notify(error.message); return; }
     setAuthUser(null);
     setWalletBalances({});
+    setWallets([]);
     setPortfolioHistory([]);
     setNotifications([]);
     setTransactions([]);
@@ -361,10 +363,11 @@ function App() {
     if (!supabaseConfigured || !authUser) return;
     let active = true;
     async function loadAccountData() {
-      const [p, tx, balance, history, notif, plans, factors] = await Promise.all([
+      const [p, tx, balance, walletResult, history, notif, plans, factors] = await Promise.all([
         supabase.from("profiles").select("display_name,country,phone,kyc_status").eq("id", authUser.id).maybeSingle(),
         supabase.from("transaction_requests").select("id,request_type,asset_code,amount,status,created_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(100),
         supabase.rpc("get_my_asset_balances"),
+        supabase.from("wallets").select("id,asset_code,network,deposit_address,provider_name,address_status,created_at").eq("user_id",authUser.id).order("created_at",{ascending:false}).limit(50),
         supabase.from("portfolio_snapshots").select("id,total_value_usd,captured_at,source").eq("user_id",authUser.id).order("captured_at",{ascending:false}).limit(90),
         supabase.from("notifications").select("id,category,title,body,read_at,created_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(50),
         supabase.from("investment_plans").select("id,name,description,asset_code,minimum_amount,maximum_amount,term_days,target_return_apr,return_type,fees_disclosure,risk_disclosure,terms_url").eq("status","active").eq("legally_reviewed",true),
@@ -374,6 +377,7 @@ function App() {
       if (p.data) setProfile(prev => ({ ...prev, name: p.data.display_name || prev.name, country: p.data.country || prev.country, phone: p.data.phone || "", kycStatus: p.data.kyc_status || "not_started" }));
       if (tx.data) setTransactions(tx.data.map(t => ({ id:t.id, type:t.request_type.replaceAll("_"," "), asset:t.asset_code, amount:Number(t.amount), unit:t.asset_code, date:new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"2-digit",year:"numeric"}), status:t.status })));
       if (balance.data) setWalletBalances(Object.fromEntries(balance.data.map(b => [b.asset_code, Number(b.balance)])));
+      if (walletResult.data) setWallets(walletResult.data);
       if (history.data) setPortfolioHistory(history.data.slice().reverse());
       if (notif.data) setNotifications(notif.data);
       if (plans.data) setInvestmentPlans(plans.data);
@@ -503,6 +507,14 @@ function App() {
         <section className="learn-section" id="learn">
           <div className="learn-inner"><div><span className="section-kicker">LEARN BEFORE YOU MOVE</span><h2>Better information.<br /><span>More thoughtful decisions.</span></h2><p>Understand wallets, blockchain networks, volatility, and transaction fees before making a move.</p><button className="btn btn-dark" onClick={() => notify("Learning center is planned for the next build.")}>Explore learning center <Icon name="arrowRight" size={15} /></button></div><div className="learn-list"><div><span>01</span><div><b>Start with the basics</b><small>Crypto, wallets, and the blockchain in plain English.</small></div><Icon name="arrowRight" /></div><div><span>02</span><div><b>Understand risk</b><small>Volatility, fees, scams, and common warning signs.</small></div><Icon name="arrowRight" /></div><div><span>03</span><div><b>Know the network</b><small>Choose the right network and verify every address.</small></div><Icon name="arrowRight" /></div></div></div>
         </section>
+        <section className="faq-section" id="faq"><div className="faq-inner"><div className="faq-intro"><span className="section-kicker">HELP CENTER</span><h2>Questions, answered.</h2><p>Key information about GROEarnX, digital-asset risks and supported services.</p><div className="faq-contact"><b>Need help with your account?</b><a href={WHATSAPP_URL} target="_blank" rel="noreferrer">WhatsApp support <Icon name="external" size={13}/></a><a href={"tel:"+CONTACT_PHONE}>Call {CONTACT_PHONE}</a></div></div><div className="faq-list">
+          <details><summary>Which digital assets are supported?</summary><p>The website provides market information for Bitcoin (BTC), Ethereum (ETH), Tether (USDT), and additional assets when returned by the public market-data feed. Financial transfers are not enabled until the required custody and payment providers are connected.</p></details>
+          <details><summary>Can U.S. customers deposit using ACH or a card?</summary><p>ACH and card are planned funding options for eligible U.S. customers. They require a contracted payment provider, compliance approval and secure checkout before payments can be accepted.</p></details>
+          <details><summary>Can I deposit BTC, ETH or USDT now?</summary><p>Do not send crypto unless a verified wallet address and exact network are displayed inside your signed-in account. Addresses will only be displayed after a custody provider provisions them; no address is currently preloaded.</p></details>
+          <details><summary>Are investment returns guaranteed?</summary><p>No. Crypto prices can rise or fall and you may lose money. Any future investment product needs its own approved terms, fees and risk disclosures. GROEarnX does not promise a fixed profit.</p></details>
+          <details><summary>Why might a U.S. state be unavailable?</summary><p>Financial services may be restricted by state, provider coverage, licensing and verification requirements. Availability must be confirmed server-side; selecting a state in a form is not an approval.</p></details>
+          <details><summary>How should I send identity documents?</summary><p>Only submit documents through the approved secure identity-verification provider when one is connected. Do not send passwords, authenticator codes, recovery phrases or full identity documents by WhatsApp or ordinary email.</p></details>
+        </div></div></section>
         <section className="cta-section"><div><span className="section-kicker">YOUR NEXT STEP</span><h2>Make the market<br />easier to understand.</h2><p>Create a secure account to manage your profile and follow live market information.</p></div><div className="cta-actions"><button className="btn btn-primary btn-lg" onClick={() => openAuth("signup")}>Get started <Icon name="arrowRight" size={15} /></button><button className="btn btn-quiet btn-lg" onClick={() => openAuth("signin")}>Sign in to your account</button><small>Deposits and withdrawals require verified provider integrations.</small></div></section>
       </main>{renderFooter()}</>;
   }
@@ -647,7 +659,7 @@ function App() {
   }
 
   function renderDashboard() {
-    const nav = [{ label: "Overview", icon: "grid" }, { label: "Trade", icon: "chart" }, { label: "Portfolio", icon: "wallet" }, { label: "Markets", icon: "chart" }, { label: "Activity", icon: "activity" }, { label: "Investment Plans", icon: "chart" }, { label: "Notifications", icon: "bell" }, { label: "Verification", icon: "shield" }, { label: "Security", icon: "lock" }, { label: "Profile", icon: "user" }, ...(isAdmin ? [{ label: "Admin", icon: "settings" }] : [])];
+    const nav = [{ label: "Overview", icon: "grid" }, { label: "Wallets", icon: "wallet" }, { label: "Trade", icon: "chart" }, { label: "Portfolio", icon: "wallet" }, { label: "Markets", icon: "chart" }, { label: "Activity", icon: "activity" }, { label: "Investment Plans", icon: "chart" }, { label: "Notifications", icon: "bell" }, { label: "Verification", icon: "shield" }, { label: "Security", icon: "lock" }, { label: "Profile", icon: "user" }, ...(isAdmin ? [{ label: "Admin", icon: "settings" }] : [])];
     return <div className="dashboard-layout">
       <aside className={"sidebar " + (menuOpen ? "sidebar-open" : "")}><div className="sidebar-brand"><Brand onClick={() => setView("home")} /></div><div className="sidebar-caption">WORKSPACE</div><nav className="sidebar-nav">{nav.map(item => <button className={tab === item.label ? "selected" : ""} key={item.label} onClick={() => dashboardNav(item.label)}><Icon name={item.icon} size={18} />{item.label}{item.label === "Verification" && profile.kycStatus !== "verified" && <span className="nav-count">!</span>}{item.label === "Notifications" && notifications.some(n=>!n.read_at) && <span className="nav-count">{notifications.filter(n=>!n.read_at).length}</span>}</button>)}</nav><div className="sidebar-bottom"><div className="support-card"><span className="support-icon"><Icon name="shield" /></span><b>Need a hand?</b><small>Talk to the GROEarnX support team.</small><a href={WHATSAPP_URL} target="_blank" rel="noreferrer">Contact support <Icon name="arrowRight" size={13} /></a></div><button className="sidebar-home" onClick={() => setView("home")}><Icon name="arrowRight" size={15} /> Back to website</button><div className="sidebar-member"><span className="member-avatar">{memberInitials}</span><span><b>{memberName}</b><small>{authUser?.email || "Verified account"}</small></span><button title="Sign out" onClick={signOut}><Icon name="external" size={14}/></button></div></div></aside>
       <main className="dashboard-main"><header className="dashboard-topbar"><button className="mobile-menu dash-menu" onClick={() => setMenuOpen(v => !v)} aria-label="Toggle dashboard menu"><Icon name="menu" /></button><div className="breadcrumbs">Workspace <span>/</span> <b>{tab}</b></div><div className="dashboard-top-actions"><span className="demo-chip"><span className="status-dot" /> ACCOUNT ACTIVE</span><button className="icon-button" aria-label="Notifications" onClick={() => setTab("Notifications")}><Icon name="bell" /></button><span className="top-avatar">{memberInitials}</span></div></header>
@@ -669,6 +681,11 @@ function App() {
             <section className="panel-card activity-panel"><div className="panel-heading"><div><h2>Recent activity</h2><p>Recent activity from your account.</p></div><button className="text-link" onClick={() => setTab("Activity")}>View activity <Icon name="arrowRight" size={14} /></button></div><ActivityTable items={transactions.slice(0,3)} /></section>
           </>}
           {tab === "Trade" && renderTrade()}
+          {tab === "Wallets" && <section className="panel-card route-panel wallets-page"><div className="panel-heading"><div><h2>Crypto wallets</h2><p>Only addresses provisioned by the connected custody provider are displayed.</p></div><span className="status-label status-pending">{wallets.filter(w=>w.address_status==="active" && w.deposit_address).length} active addresses</span></div>
+            <div className="wallet-safety-note"><Icon name="shield" size={17}/><span><b>Verify before sending.</b> Check the asset, token contract and network. Never transfer funds to an address copied from an unverified message.</span></div>
+            {wallets.length===0 ? <div className="empty-state"><Icon name="wallet" size={26}/><b>No wallet addresses are available yet.</b><span>BTC, ETH and USDT wallet addresses will appear here only after the selected custody provider has provisioned and verified them for your account. Do not send assets to GROEarnX until a verified address is shown.</span></div> : <div className="table-wrap"><table className="market-table wallets-table"><thead><tr><th>Asset</th><th>Network</th><th>Address</th><th>Provider</th><th>Status</th></tr></thead><tbody>{wallets.map(w=><tr key={w.id}><td><b>{w.asset_code}</b></td><td>{w.network}</td><td>{w.address_status==="active" && w.deposit_address ? <div className="wallet-address-cell"><code>{w.deposit_address}</code><button className="btn btn-outline btn-sm" onClick={async()=>{try{await navigator.clipboard.writeText(w.deposit_address);notify("Wallet address copied. Verify the network before sending.");}catch{notify("Could not copy address. Select and copy it manually.");}}}>Copy</button></div> : <span className="muted-cell">Not available</span>}</td><td>{w.provider_name || "—"}</td><td><span className={"status-label "+(w.address_status==="active" && w.deposit_address?"status-ok":"status-pending")}>{String(w.address_status).replaceAll("_"," ")}</span></td></tr>)}</tbody></table></div>}
+            <div className="activity-note"><Icon name="info" size={16}/> Wallet records are read-only for customers. Address creation, withdrawals and transaction signing must be performed by the secure server-side custody integration.</div>
+          </section>}
           {tab === "Portfolio" && <section className="panel-card route-panel"><div className="panel-heading"><div><h2>Your assets</h2><p>Quantity × public market quote. Only posted ledger balances are included.</p></div><button className="btn btn-primary btn-sm" onClick={() => openRequest("deposit")}><Icon name="plus" size={14}/> Deposit request</button></div><div className="portfolio-summary-strip"><span>Portfolio value</span><strong>{showBalances ? money(portfolioValue) : "••••••"}</strong><button className="eye-toggle" onClick={() => setShowBalances(v => !v)}><Icon name="eye" size={15}/></button></div><div className="table-wrap"><table className="market-table portfolio-table"><thead><tr><th>Asset</th><th>Units</th><th>Price</th><th>Value</th><th>24h</th></tr></thead><tbody>{portfolioRows.map(c=><tr key={c.id}><td><div className="asset-cell"><CoinMark coin={c}/><div><b>{c.name}</b><small>{c.symbol}</small></div></div></td><td>{shortNumber(c.units,8)} {c.symbol}</td><td>{c.price > 10 ? money(c.price) : money(c.price,4)}</td><td><b>{showBalances ? money(c.value) : "••••"}</b></td><td><PriceChange value={c.change}/></td></tr>)}</tbody></table></div></section>}
           {tab === "Markets" && <section className="panel-card route-panel"><div className="panel-heading"><div><h2>Crypto markets</h2><p>{marketStatus === "live" ? "Current public market data and price changes." : "Live quote feed unavailable. Prices are not displayed until a fresh quote is received."}</p></div><span className={"feed-state " + (marketStatus === "live" ? "feed-live" : "")}><i />{marketStatus === "live" ? "Live quotes" : "Unavailable"}</span></div><MarketTable rows={market}/><p className="data-note"><Icon name="info" size={14}/> Market prices change frequently. This page is informational and does not execute trades.</p></section>}
           {tab === "Activity" && <section className="panel-card route-panel"><div className="panel-heading"><div><h2>Transaction activity</h2><p>Requests and status updates recorded for your account.</p></div><div className="inline-buttons"><button className="btn btn-outline btn-sm" onClick={() => openRequest("withdraw")}>Withdraw</button><button className="btn btn-primary btn-sm" onClick={() => openRequest("deposit")}>Deposit</button></div></div><ActivityTable items={transactions}/><div className="activity-note"><Icon name="info" size={16}/> A real ledger must only mark a deposit settled after provider or blockchain confirmation.</div></section>}
@@ -718,6 +735,7 @@ function App() {
 
   function dashboardDescription(activeTab) {
     return ({
+      "Wallets": "View wallet records and verified deposit addresses made available by the connected custody service.",
       "Portfolio": "Review posted asset balances and their current USD value.",
       "Markets": "Track public quotes when the market-data feed is available.",
       "Activity": "Review transaction requests and settlement status from your account.",
