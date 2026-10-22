@@ -92,6 +92,7 @@ function Sparkline({ values = [], color = "#159B71", width = 112, height = 42, f
 }
 
 function PriceChange({ value }) {
+  if (!Number.isFinite(value)) return <span className="change unavailable">—</span>;
   return <span className={"change " + (value >= 0 ? "positive" : "negative")}>{value >= 0 ? "↗" : "↘"} {changeText(value)}</span>;
 }
 
@@ -159,7 +160,7 @@ function App() {
           if (!base || !Number.isFinite(item.current_price)) return null;
           const raw = item.sparkline_in_7d && item.sparkline_in_7d.price;
           const spark = Array.isArray(raw) && raw.length > 1 ? raw.filter((_, i) => i % Math.max(1, Math.floor(raw.length / 24)) === 0).slice(-24) : [];
-          return { ...base, price: item.current_price, change: Number(item.price_change_percentage_24h ?? 0), marketCap: Number(item.market_cap ?? 0), volume24h: Number(item.total_volume ?? 0), high24h: Number(item.high_24h ?? item.current_price), low24h: Number(item.low_24h ?? item.current_price), spark };
+          return { ...base, price: item.current_price, change: Number.isFinite(item.price_change_percentage_24h) ? item.price_change_percentage_24h : null, marketCap: Number.isFinite(item.market_cap) ? item.market_cap : null, volume24h: Number.isFinite(item.total_volume) ? item.total_volume : null, high24h: Number.isFinite(item.high_24h) ? item.high_24h : null, low24h: Number.isFinite(item.low_24h) ? item.low_24h : null, spark };
         }).filter(Boolean);
         if (alive && rows.length >= 3) {
           setMarket(rows);
