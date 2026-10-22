@@ -78,8 +78,74 @@ In Supabase Auth settings:
 1. Enable email confirmation and configure confirmation and password-reset email templates.
 2. Set the production Site URL and allowed redirect URLs to the exact production domain, including the chosen www/non-www form.
 3. Configure password rules, rate limits, anti-abuse protection, session policy and recovery procedures.
-4. Decide if authenticator MFA is optional or mandatory. The interface has authenticator enrollment/challenge screens; production testing must also enforce the intended MFA assurance level in server/database policies and sensitive server endpoints. Showing an MFA screen alone is not sufficient.
-5. Test signup, confirmation, sign-in, sign-out, password reset, expired links, wrong passwords, rate limits and mobile layouts.
+4. Make authenticator MFA mandatory for private account data if that is the selected production policy. The interface routes users to authenticator setup before showing account screens, but the database/API must independently enforce MFA. Showing an MFA screen alone is not sufficient.
+5. In the production Supabase SQL Editor, review and test the following restrictive policies for your required-MFA model. Do this after confirming you can recover an account securely; it intentionally prevents AAL1 sessions from accessing private account tables. If your legal/security team selects a different MFA policy, adjust the rules deliberately rather than silently leaving the APIs unprotected.
+
+~~~sql
+-- Example only: require a verified aal2 session for private customer data.
+-- Run once in the production database after reviewing the policy with your engineer.
+create policy profiles_require_aal2
+  on public.profiles as restrictive for all to authenticated
+  using ((select auth.jwt()->>'aal') = 'aal2')
+  with check ((select auth.jwt()->>'aal') = 'aal2');
+
+create policy transaction_requests_require_aal2
+  on public.transaction_requests as restrictive for all to authenticated
+  using ((select auth.jwt()->>'aal') = 'aal2')
+  with check ((select auth.jwt()->>'aal') = 'aal2');
+
+create policy wallets_require_aal2
+  on public.wallets as restrictive for all to authenticated
+  using ((select auth.jwt()->>'aal') = 'aal2')
+  with check ((select auth.jwt()->>'aal') = 'aal2');
+
+create policy user_verifications_require_aal2
+  on public.user_verifications as restrictive for all to authenticated
+  using ((select auth.jwt()->>'aal') = 'aal2')
+  with check ((select auth.jwt()->>'aal') = 'aal2');
+
+create policy notifications_require_aal2
+  on public.notifications as restrictive for all to authenticated
+  using ((select auth.jwt()->>'aal') = 'aal2')
+  with check ((select auth.jwt()->>'aal') = 'aal2');
+
+create policy portfolio_snapshots_require_aal2
+  on public.portfolio_snapshots as restrictive for all to authenticated
+  using ((select auth.jwt()->>'aal') = 'aal2')
+  with check ((select auth.jwt()->>'aal') = 'aal2');
+~~~
+
+The balance RPC is SECURITY DEFINER, so it must also check the signed-in JWT assurance level inside the function, not just rely on table RLS:
+
+~~~sql
+create or replace function public.get_my_asset_balances()
+returns table (asset_code text, balance numeric)
+language sql
+stable
+security definer
+set search_path = ''
+as $
+  select a.asset_code,
+         coalesce(sum(case when e.side = 'credit' then e.amount else -e.amount end), 0)::numeric as balance
+  from public.ledger_accounts a
+  left join public.ledger_entries e on e.account_id = a.id
+    and exists (
+      select 1 from public.ledger_journals j
+      where j.id = e.journal_id and j.status = 'posted'
+    )
+  where a.owner_user_id = (select auth.uid())
+    and a.account_type = 'customer_liability'
+    and (select auth.jwt()->>'aal') = 'aal2'
+  group by a.asset_code
+  order by a.asset_code;
+$;
+
+revoke all on function public.get_my_asset_balances() from public, anon;
+grant execute on function public.get_my_asset_balances() to authenticated;
+~~~
+
+After applying these policies, test with one account without MFA (it must receive no private account data) and a separate account with verified MFA (it should see only its own data). Do not rely on a front-end route guard as the security boundary.
+6. Test signup, confirmation, sign-in, sign-out, password reset, expired links, wrong passwords, rate limits and mobile layouts.
 6. The state held in user metadata is customer-editable. Never use it as the authoritative compliance or permission record.
 
 ### Step 7 — Select and contract the financial providers
