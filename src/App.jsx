@@ -350,7 +350,7 @@ function App() {
       if (!active || error || !data.session?.user) return;
       const user = data.session.user;
       setAuthUser(user);
-      setProfile(p => ({ ...p, email: user.email || "", name: user.user_metadata?.display_name || "", country: user.user_metadata?.country || "" }));
+      setProfile(p => ({ ...p, email: user.email || "", name: user.user_metadata?.display_name || "", country: user.user_metadata?.country || "", stateRegion: user.user_metadata?.state_region || "" }));
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (active) setAuthUser(session?.user || null);
