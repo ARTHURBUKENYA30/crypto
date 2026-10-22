@@ -114,8 +114,8 @@ function TradingChart({ values = [], color = "#159B71" }) {
 function App() {
   const [view, setView] = useState("home");
   const [tab, setTab] = useState("Overview");
-  const [market, setMarket] = useState(DEMO_MARKET);
-  const [marketStatus, setMarketStatus] = useState("sample");
+  const [market, setMarket] = useState([]);
+  const [marketStatus, setMarketStatus] = useState("unavailable");
   const [lastUpdated, setLastUpdated] = useState(null);
   const [tradePair, setTradePair] = useState("bitcoin");
   const [tradeSide, setTradeSide] = useState("buy");
@@ -142,21 +142,21 @@ function App() {
         const response = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=" + ids + "&order=market_cap_desc&per_page=5&page=1&sparkline=true&price_change_percentage=24h", { headers: { accept: "application/json" } });
         if (!response.ok) throw new Error("Market feed unavailable");
         const data = await response.json();
-        const meta = Object.fromEntries(DEMO_MARKET.map(c => [c.id, c]));
+        const meta = Object.fromEntries(DEMO_MARKET.map(c => [c.id, { ...c, price: null, change: null, marketCap: null, spark: [] }]));
         const rows = data.map(item => {
           const base = meta[item.id];
           if (!base || !Number.isFinite(item.current_price)) return null;
           const raw = item.sparkline_in_7d && item.sparkline_in_7d.price;
-          const spark = Array.isArray(raw) && raw.length > 1 ? raw.filter((_, i) => i % Math.max(1, Math.floor(raw.length / 24)) === 0).slice(-24) : base.spark;
+          const spark = Array.isArray(raw) && raw.length > 1 ? raw.filter((_, i) => i % Math.max(1, Math.floor(raw.length / 24)) === 0).slice(-24) : [];
           return { ...base, price: item.current_price, change: Number(item.price_change_percentage_24h ?? 0), marketCap: Number(item.market_cap ?? 0), volume24h: Number(item.total_volume ?? 0), high24h: Number(item.high_24h ?? item.current_price), low24h: Number(item.low_24h ?? item.current_price), spark };
         }).filter(Boolean);
         if (alive && rows.length >= 3) {
           setMarket(rows);
           setMarketStatus("live");
           setLastUpdated(new Date());
-        } else if (alive) setMarketStatus("sample");
+        } else if (alive) { setMarket([]); setMarketStatus("unavailable"); }
       } catch {
-        if (alive) setMarketStatus("sample");
+        if (alive) { setMarket([]); setMarketStatus("unavailable"); }
       }
     }
     loadMarket();
@@ -361,6 +361,7 @@ function App() {
   }
 
   function renderTrade() {
+    if (!market.length) return <section className="panel-card route-panel"><div className="panel-heading"><div><h2>Market data unavailable</h2><p>Live public quotes could not be loaded. Trading remains unavailable until market data and an execution provider are configured.</p></div></div></section>;
     const coin = market.find(c=>c.id===tradePair) || market[0];
     const priceText = coin.price>10 ? money(coin.price,2) : money(coin.price,4);
     const amount = Number(tradeAmount || 0);
