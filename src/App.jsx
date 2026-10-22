@@ -78,13 +78,14 @@ function CoinMark({ coin, size = "md" }) {
 }
 
 function Sparkline({ values = [], color = "#159B71", width = 112, height = 42, fill = false }) {
-  const points = values.length ? values : [14, 18, 15, 22, 19, 25, 23, 30];
+  if (!Array.isArray(values) || values.length < 2) return <div className="sparkline-empty" aria-label="Price history unavailable">—</div>;
+  const points = values;
   const min = Math.min(...points);
   const max = Math.max(...points);
   const span = max - min || 1;
   const coords = points.map((v, i) => (i * (width - 4)) / (points.length - 1) + 2 + "," + (height - 3 - ((v - min) / span) * (height - 7))).join(" ");
   const area = "2," + (height - 1) + " " + coords + " " + (width - 2) + "," + (height - 1);
-  return <svg className="sparkline" viewBox={"0 0 " + width + " " + height} role="img" aria-label="Price trend illustration">
+  return <svg className="sparkline" viewBox={"0 0 " + width + " " + height} role="img" aria-label="Historical crypto price trend">
     {fill && <polygon points={area} fill={color} opacity=".10" />}
     <polyline points={coords} fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
   </svg>;
@@ -95,18 +96,19 @@ function PriceChange({ value }) {
 }
 
 function TradingChart({ values = [], color = "#159B71" }) {
+  if (!Array.isArray(values) || values.length < 3) return <div className="chart-unavailable">Price history is unavailable for this asset.</div>;
   const width = 940, height = 260, top = 12, bottom = 24;
-  const data = values.length > 2 ? values : [12,13,12,17,16,20,18,23,21,25,24,29];
+  const data = values;
   const min = Math.min(...data), max = Math.max(...data), span = max-min || 1;
   const pts = data.map((v,i)=>({x:8+i*((width-16)/Math.max(1,data.length-1)),y:top+(1-(v-min)/span)*(height-top-bottom)}));
   const line = pts.map(p=>p.x.toFixed(1)+","+p.y.toFixed(1)).join(" ");
   const area = "M "+pts[0].x+" "+(height-bottom)+" L "+pts.map(p=>p.x+" "+p.y).join(" L ")+" L "+pts[pts.length-1].x+" "+(height-bottom)+" Z";
-  return <svg className="trading-chart-svg" viewBox={"0 0 "+width+" "+height} preserveAspectRatio="none" role="img" aria-label="Seven-day crypto price trend">
+  return <svg className="trading-chart-svg" viewBox={"0 0 "+width+" "+height} preserveAspectRatio="none" role="img" aria-label="Historical crypto price trend">
     <defs><linearGradient id="tradeChartFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity=".22"/><stop offset="100%" stopColor={color} stopOpacity="0"/></linearGradient></defs>
     {[0,1,2,3,4].map(i=><line key={i} x1="0" x2={width} y1={top+i*((height-top-bottom)/4)} y2={top+i*((height-top-bottom)/4)} stroke="#e9eef4" strokeDasharray="4 6"/>)}
     <path d={area} fill="url(#tradeChartFill)"/><polyline points={line} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
     <circle cx={pts[pts.length-1].x} cy={pts[pts.length-1].y} r="5" fill={color} stroke="white" strokeWidth="2"/>
-    <g fill="#91a0b1" fontSize="11"><text x="8" y={height-5}>7 days ago</text><text x={width/2} y={height-5} textAnchor="middle">Market trend</text><text x={width-8} y={height-5} textAnchor="end">Latest</text></g>
+    <g fill="#91a0b1" fontSize="11"><text x="8" y={height-5}>7 days ago</text><text x={width/2} y={height-5} textAnchor="middle">Price history</text><text x={width-8} y={height-5} textAnchor="end">Latest</text></g>
   </svg>;
 }
 
@@ -584,8 +586,8 @@ function App() {
     const priceText = coin.price>10 ? money(coin.price,2) : money(coin.price,4);
     const amount = Number(tradeAmount || 0);
     const qty = Number.isFinite(amount) && amount>0 ? amount/coin.price : 0;
-    const high = coin.high24h ?? coin.price*1.024, low = coin.low24h ?? coin.price*.976;
-    const volume = coin.volume24h ?? coin.marketCap*.035;
+    const high = coin.high24h, low = coin.low24h;
+    const volume = coin.volume24h;
     return <div className="trade-terminal">
       <section className="trade-pair-bar">
         <div className="trade-pair-main"><CoinMark coin={coin}/><div><div className="trade-pair-picker"><select aria-label="Select trading pair" value={tradePair} onChange={e=>setTradePair(e.target.value)}>{market.map(c=><option value={c.id} key={c.id}>{c.symbol} / USD</option>)}</select><span className="pair-badge">SPOT</span></div><small>{coin.name} / US Dollar</small></div></div>
@@ -600,7 +602,7 @@ function App() {
           <div className="trade-panel-title"><div><h2>{coin.name} price chart</h2><p>Public 7-day price sparkline · USD</p></div><span className="chart-range-chip">7D</span></div>
           <div className="trade-chart-summary"><span>{priceText}</span><PriceChange value={coin.change}/><small>Latest quote</small></div>
           <div className="trade-chart-wrap"><TradingChart values={coin.spark} color={coin.change>=0?"#17996C":"#D65E70"}/></div>
-          <div className="trade-chart-legend"><span><i style={{background:coin.change>=0?"#17996C":"#D65E70"}}/>{coin.symbol}/USD trend</span><span>{marketStatus==="live"?"CoinGecko market feed":"Illustrative fallback"}</span></div>
+          <div className="trade-chart-legend"><span><i style={{background:coin.change>=0?"#17996C":"#D65E70"}}/>{coin.symbol}/USD trend</span><span>{marketStatus==="live"?"CoinGecko market feed":"Market data unavailable"}</span></div>
         </section>
         <section className="panel-card trade-order-panel">
           <div className="panel-heading"><div><h2>Place an order</h2><p>Order entry</p></div><span className="metric-badge">UNAVAILABLE</span></div>
@@ -620,7 +622,7 @@ function App() {
       </div>
       <div className="trade-lower-grid">
         <section className="panel-card depth-panel"><div className="panel-heading"><div><h2>Market depth</h2><p>Order book data requires a live exchange connection.</p></div><span className="metric-badge">NOT CONNECTED</span></div><div className="empty-state"><Icon name="info" size={24}/><b>Order book unavailable</b><span>Live bid/ask depth will appear after a supported exchange provider is connected. No synthetic market depth is displayed.</span></div></section>
-        <section className="panel-card pair-watch-panel"><div className="panel-heading"><div><h2>Market watch</h2><p>Choose a pair to explore</p></div><span className={"feed-state "+(marketStatus==="live"?"feed-live":"")}><i/>{marketStatus==="live"?"Live":"Sample"}</span></div>
+        <section className="panel-card pair-watch-panel"><div className="panel-heading"><div><h2>Market watch</h2><p>Choose a pair to explore</p></div><span className={"feed-state "+(marketStatus==="live"?"feed-live":"")}><i/>{marketStatus==="live"?"Live":"Unavailable"}</span></div>
           <div className="pair-watch-list">{market.map(c=><button key={c.id} className={tradePair===c.id?"selected":""} onClick={()=>setTradePair(c.id)}><CoinMark coin={c} size="sm"/><span><b>{c.symbol}/USD</b><small>{c.name}</small></span><span className="pair-watch-price"><b>{c.price>10?money(c.price,2):money(c.price,4)}</b><PriceChange value={c.change}/></span></button>)}</div>
         </section>
       </div>
