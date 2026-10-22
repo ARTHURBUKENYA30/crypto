@@ -1,17 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { supabase, supabaseConfigured } from "./lib/supabase.js";
 
 const CONTACT_PHONE = "+447404517328";
 const WHATSAPP_URL = "https://wa.me/447404517328";
 
-const DEMO_MARKET = [
-  { id: "bitcoin", symbol: "BTC", name: "Bitcoin", mark: "₿", color: "#F7931A", price: 67420.12, change: 2.41, marketCap: 1320000000000, spark: [15, 17, 14, 19, 18, 24, 22, 28, 25, 31, 29, 36] },
-  { id: "ethereum", symbol: "ETH", name: "Ethereum", mark: "Ξ", color: "#6877DE", price: 3482.16, change: 1.83, marketCap: 418600000000, spark: [13, 16, 15, 21, 20, 18, 25, 23, 28, 26, 31, 33] },
-  { id: "tether", symbol: "USDT", name: "Tether", mark: "₮", color: "#26A17B", price: 1.0001, change: 0.01, marketCap: 112100000000, spark: [17, 17.3, 17.2, 17.5, 17.4, 17.2, 17.4, 17.3, 17.6, 17.4, 17.5, 17.6] },
-  { id: "solana", symbol: "SOL", name: "Solana", mark: "◎", color: "#8A72E8", price: 182.47, change: -0.62, marketCap: 81200000000, spark: [30, 28, 32, 27, 29, 24, 26, 21, 24, 19, 22, 20] },
-  { id: "ripple", symbol: "XRP", name: "XRP", mark: "✕", color: "#8292A6", price: 0.6241, change: 0.94, marketCap: 34500000000, spark: [14, 18, 16, 19, 18, 24, 21, 25, 23, 27, 25, 30] },
+const ASSET_META = [
+  { id: "bitcoin", symbol: "BTC", name: "Bitcoin", mark: "₿", color: "#F7931A" },
+  { id: "ethereum", symbol: "ETH", name: "Ethereum", mark: "Ξ", color: "#6877DE" },
+  { id: "tether", symbol: "USDT", name: "Tether", mark: "₮", color: "#26A17B" },
+  { id: "solana", symbol: "SOL", name: "Solana", mark: "◎", color: "#8A72E8" },
+  { id: "ripple", symbol: "XRP", name: "XRP", mark: "✕", color: "#8292A6" },
 ];
-
-const DEMO_HOLDINGS = { bitcoin: 0.045, ethereum: 0.7, tether: 1250, solana: 6, ripple: 130 };
 
 const ASSET_OPTIONS = [
   { id: "usdt", label: "USDT (Tether)", mark: "₮", color: "#26A17B", type: "crypto" },
@@ -113,6 +112,16 @@ function TradingChart({ values = [], color = "#159B71" }) {
 
 function App() {
   const [view, setView] = useState("home");
+  const [authUser, setAuthUser] = useState(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [walletBalances, setWalletBalances] = useState({});
+  const [notifications, setNotifications] = useState([]);
+  const [investmentPlans, setInvestmentPlans] = useState([]);
+  const [mfaFactors, setMfaFactors] = useState([]);
+  const [mfaSetup, setMfaSetup] = useState(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaBusy, setMfaBusy] = useState(false);
+  const [legalPage, setLegalPage] = useState(null);
   const [tab, setTab] = useState("Overview");
   const [market, setMarket] = useState([]);
   const [marketStatus, setMarketStatus] = useState("unavailable");
@@ -126,13 +135,9 @@ function App() {
   const [toast, setToast] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [watchlist, setWatchlist] = useState(["bitcoin", "ethereum", "solana"]);
-  const [transactions, setTransactions] = useState([
-    { id: "GX-1042", type: "Deposit request", asset: "USDT", amount: 250, unit: "USDT", date: "Oct 19, 2026", status: "Preview only" },
-    { id: "GX-1038", type: "Market activity", asset: "BTC", amount: 0.004, unit: "BTC", date: "Oct 17, 2026", status: "Illustrative" },
-    { id: "GX-1029", type: "Withdrawal request", asset: "ETH", amount: 0.12, unit: "ETH", date: "Oct 15, 2026", status: "Preview only" },
-  ]);
+  const [transactions, setTransactions] = useState([]);
   const [request, setRequest] = useState({ direction: "deposit", asset: "usdt", amount: "", network: "TRC20", country: "United States", provider: "MTN Mobile Money", phone: "", destination: "", acknowledged: false });
-  const [profile, setProfile] = useState({ name: "Demo Member", email: "", country: "", nationalId: "", drivingPermit: "" });
+  const [profile, setProfile] = useState({ name: "", email: "", country: "", phone: "", kycStatus: "not_started" });
 
   useEffect(() => {
     let alive = true;
@@ -142,7 +147,7 @@ function App() {
         const response = await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=" + ids + "&order=market_cap_desc&per_page=5&page=1&sparkline=true&price_change_percentage=24h", { headers: { accept: "application/json" } });
         if (!response.ok) throw new Error("Market feed unavailable");
         const data = await response.json();
-        const meta = Object.fromEntries(DEMO_MARKET.map(c => [c.id, { ...c, price: null, change: null, marketCap: null, spark: [] }]));
+        const meta = Object.fromEntries(ASSET_META.map(c => [c.id, { ...c, spark: [] }]));
         const rows = data.map(item => {
           const base = meta[item.id];
           if (!base || !Number.isFinite(item.current_price)) return null;
@@ -171,33 +176,125 @@ function App() {
   }, [toast]);
 
   const coinById = useMemo(() => Object.fromEntries(market.map(c => [c.id, c])), [market]);
-  const portfolioRows = useMemo(() => market.map(coin => ({ ...coin, units: DEMO_HOLDINGS[coin.id] || 0, value: coin.price * (DEMO_HOLDINGS[coin.id] || 0), previousValue: coin.price * (DEMO_HOLDINGS[coin.id] || 0) / (1 + (Number.isFinite(coin.change) ? coin.change : 0) / 100) })), [market]);
+  const portfolioRows = useMemo(() => market.map(coin => {
+    const units = Number(walletBalances[coin.symbol] || 0);
+    const value = coin.price * units;
+    const divisor = 1 + (Number.isFinite(coin.change) ? coin.change : 0) / 100;
+    const previousValue = divisor > 0 ? value / divisor : value;
+    return { ...coin, units, value, previousValue };
+  }), [market, walletBalances]);
   const portfolioValue = portfolioRows.reduce((sum, coin) => sum + (Number.isFinite(coin.value) ? coin.value : 0), 0);
   const previousValue = portfolioRows.reduce((sum, coin) => sum + (Number.isFinite(coin.previousValue) ? coin.previousValue : 0), 0);
   const dailyChange = portfolioValue - previousValue;
   const dailyChangePct = previousValue ? (dailyChange / previousValue) * 100 : 0;
-  const walletIsDemo = view === "dashboard";
+  const isAdmin = authUser?.app_metadata?.role === "admin";
+  const memberName = profile.name || authUser?.user_metadata?.display_name || authUser?.email?.split("@")[0] || "Account holder";
+  const memberInitials = memberName.split(/\\s+/).slice(0,2).map(s=>s[0] || "").join("").toUpperCase() || "GX";
 
   function notify(text) { setToast(text); }
   function openAuth(which) { setView(which); setMenuOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); }
   function startDemo() {
-    setProfile(p => ({ ...p, name: "Demo Member" }));
+    notify("Sign in or create an account to access your personal dashboard.");
+    openAuth("signin");
+  }
+  async function signIn(e) {
+    e.preventDefault();
+    if (!supabaseConfigured) { notify("Account service configuration is missing."); return; }
+    const form = e.currentTarget;
+    setAuthBusy(true);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: form.elements.email.value.trim(),
+      password: form.elements.password.value,
+    });
+    setAuthBusy(false);
+    if (error) { notify(error.message); return; }
+    setAuthUser(data.user);
+    setProfile(p => ({ ...p, email: data.user.email || "", name: data.user.user_metadata?.display_name || "", country: data.user.user_metadata?.country || "" }));
     setView("dashboard");
     setTab("Overview");
-    setToast("Demo dashboard opened. No account was authenticated and no funds are held.");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    notify("You are signed in.");
   }
-  function signIn(e) {
+  async function signUp(e) {
     e.preventDefault();
-    startDemo();
+    if (!supabaseConfigured) { notify("Account service configuration is missing."); return; }
+    const form = e.currentTarget;
+    const email = form.elements.email.value.trim();
+    const password = form.elements.password.value;
+    const displayName = form.elements.fullName.value.trim();
+    const country = form.elements.country.value;
+    setAuthBusy(true);
+    const { data, error } = await supabase.auth.signUp({
+      email, password,
+      options: { data: { display_name: displayName, country } }
+    });
+    setAuthBusy(false);
+    if (error) { notify(error.message); return; }
+    setProfile(p => ({ ...p, name: displayName, email, country }));
+    if (data.session && data.user) {
+      setAuthUser(data.user);
+      setView("dashboard");
+      setTab("Overview");
+      notify("Your account has been created.");
+    } else {
+      setView("signin");
+      notify("Account created. Check your email for the verification link before signing in.");
+    }
   }
-  function signUp(e) {
-    e.preventDefault();
-    e.currentTarget.reset();
-    setProfile(p => ({ ...p, country: "", nationalId: "", drivingPermit: "" }));
-    notify("Preview only: nothing was sent or stored. Connect authentication and a secure identity-verification provider before collecting real details.");
+  async function resetPassword() {
+    const email = profile.email.trim();
+    if (!email) { notify("Enter your email address first, then select Forgot password."); return; }
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    notify(error ? error.message : "If that account exists, a password reset email has been sent.");
   }
-  function startDemo() { notify("Please create an account or sign in."); openAuth("signin"); }
+  async function signOut() {
+    const { error } = await supabase.auth.signOut();
+    if (error) { notify(error.message); return; }
+    setAuthUser(null);
+    setWalletBalances({});
+    setNotifications([]);
+    setTransactions([]);
+    setView("home");
+    setTab("Overview");
+    notify("You have signed out.");
+  }
+  useEffect(() => {
+    if (!supabaseConfigured) return;
+    let active = true;
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!active || error || !data.session?.user) return;
+      const user = data.session.user;
+      setAuthUser(user);
+      setProfile(p => ({ ...p, email: user.email || "", name: user.user_metadata?.display_name || "", country: user.user_metadata?.country || "" }));
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (active) setAuthUser(session?.user || null);
+    });
+    return () => { active = false; listener.subscription.unsubscribe(); };
+  }, []);
+  useEffect(() => {
+    if (!supabaseConfigured || !authUser) return;
+    let active = true;
+    async function loadAccountData() {
+      const [p, tx, balance, notif, plans, factors] = await Promise.all([
+        supabase.from("profiles").select("display_name,country,phone,kyc_status").eq("id", authUser.id).maybeSingle(),
+        supabase.from("transaction_requests").select("id,request_type,asset_code,amount,status,created_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(100),
+        supabase.rpc("get_my_asset_balances"),
+        supabase.from("notifications").select("id,category,title,body,read_at,created_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(50),
+        supabase.from("investment_plans").select("id,name,description,asset_code,minimum_amount,maximum_amount,term_days,target_return_apr,return_type,fees_disclosure,risk_disclosure,terms_url").eq("status","active").eq("legally_reviewed",true),
+        supabase.auth.mfa.listFactors(),
+      ]);
+      if (!active) return;
+      if (p.data) setProfile(prev => ({ ...prev, name: p.data.display_name || prev.name, country: p.data.country || prev.country, phone: p.data.phone || "", kycStatus: p.data.kyc_status || "not_started" }));
+      if (tx.data) setTransactions(tx.data.map(t => ({ id:t.id, type:t.request_type.replaceAll("_"," "), asset:t.asset_code, amount:Number(t.amount), unit:t.asset_code, date:new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"2-digit",year:"numeric"}), status:t.status })));
+      if (balance.data) setWalletBalances(Object.fromEntries(balance.data.map(b => [b.asset_code, Number(b.balance)])));
+      if (notif.data) setNotifications(notif.data);
+      if (plans.data) setInvestmentPlans(plans.data);
+      if (factors.data) setMfaFactors([...(factors.data.totp || []), ...(factors.data.phone || [])]);
+    }
+    loadAccountData().catch(() => { if (active) notify("Some account information could not be loaded. Refresh the page or contact support."); });
+    return () => { active = false; };
+  }, [authUser]);
+  function changeRequest(key, value) { setRequest(r => ({ ...r, [key]: value })); }
   function changeRequest(key, value) { setRequest(r => ({ ...r, [key]: value })); }
   function openRequest(direction, asset = "usdt") {
     setRequest({ direction, asset, amount: "", network: asset === "bitcoin" ? "Bitcoin network" : asset === "ethereum" ? "Ethereum mainnet" : "TRC20", country: profile.country || "United States", provider: "MTN Mobile Money", phone: "", destination: "", acknowledged: false });
