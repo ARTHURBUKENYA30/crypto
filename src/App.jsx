@@ -95,12 +95,32 @@ function PriceChange({ value }) {
   return <span className={"change " + (value >= 0 ? "positive" : "negative")}>{value >= 0 ? "↗" : "↘"} {changeText(value)}</span>;
 }
 
+function TradingChart({ values = [], color = "#159B71" }) {
+  const width = 940, height = 260, top = 12, bottom = 24;
+  const data = values.length > 2 ? values : [12,13,12,17,16,20,18,23,21,25,24,29];
+  const min = Math.min(...data), max = Math.max(...data), span = max-min || 1;
+  const pts = data.map((v,i)=>({x:8+i*((width-16)/Math.max(1,data.length-1)),y:top+(1-(v-min)/span)*(height-top-bottom)});
+  const line = pts.map(p=>p.x.toFixed(1)+","+p.y.toFixed(1)).join(" ");
+  const area = "M "+pts[0].x+" "+(height-bottom)+" L "+pts.map(p=>p.x+" "+p.y).join(" L ")+" L "+pts[pts.length-1].x+" "+(height-bottom)+" Z";
+  return <svg className="trading-chart-svg" viewBox={"0 0 "+width+" "+height} preserveAspectRatio="none" role="img" aria-label="Seven-day crypto price trend">
+    <defs><linearGradient id="tradeChartFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity=".22"/><stop offset="100%" stopColor={color} stopOpacity="0"/></linearGradient></defs>
+    {[0,1,2,3,4].map(i=><line key={i} x1="0" x2={width} y1={top+i*((height-top-bottom)/4)} y2={top+i*((height-top-bottom)/4)} stroke="#e9eef4" strokeDasharray="4 6"/>)}
+    <path d={area} fill="url(#tradeChartFill)"/><polyline points={line} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
+    <circle cx={pts[pts.length-1].x} cy={pts[pts.length-1].y} r="5" fill={color} stroke="white" strokeWidth="2"/>
+    <g fill="#91a0b1" fontSize="11"><text x="8" y={height-5}>7 days ago</text><text x={width/2} y={height-5} textAnchor="middle">Market trend</text><text x={width-8} y={height-5} textAnchor="end">Latest</text></g>
+  </svg>;
+}
+
 function App() {
   const [view, setView] = useState("home");
   const [tab, setTab] = useState("Overview");
   const [market, setMarket] = useState(DEMO_MARKET);
   const [marketStatus, setMarketStatus] = useState("sample");
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [tradePair, setTradePair] = useState("bitcoin");
+  const [tradeSide, setTradeSide] = useState("buy");
+  const [tradeAmount, setTradeAmount] = useState("250");
+  const [tradeOrderType, setTradeOrderType] = useState("Market");
   const [showBalances, setShowBalances] = useState(true);
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState("");
@@ -128,7 +148,7 @@ function App() {
           if (!base || !Number.isFinite(item.current_price)) return null;
           const raw = item.sparkline_in_7d && item.sparkline_in_7d.price;
           const spark = Array.isArray(raw) && raw.length > 1 ? raw.filter((_, i) => i % Math.max(1, Math.floor(raw.length / 24)) === 0).slice(-24) : base.spark;
-          return { ...base, price: item.current_price, change: Number(item.price_change_percentage_24h ?? 0), marketCap: Number(item.market_cap ?? 0), spark };
+          return { ...base, price: item.current_price, change: Number(item.price_change_percentage_24h ?? 0), marketCap: Number(item.market_cap ?? 0), volume24h: Number(item.total_volume ?? 0), high24h: Number(item.high_24h ?? item.current_price), low24h: Number(item.low_24h ?? item.current_price), spark };
         }).filter(Boolean);
         if (alive && rows.length >= 3) {
           setMarket(rows);
@@ -249,6 +269,7 @@ function App() {
 
   function renderHome() {
     return <>{renderHeader()}
+      <div className="market-ticker-bar"><div className="market-ticker-label"><span className="status-dot" /> MARKET WATCH</div><div className="market-ticker-items">{market.slice(0, 5).map(coin => <button key={coin.id} onClick={() => { setTradePair(coin.id); setView("dashboard"); setTab("Trade"); }}><span className="ticker-symbol">{coin.symbol}</span><b>{coin.price > 10 ? money(coin.price, 2) : money(coin.price, 4)}</b><PriceChange value={coin.change} /></button>)}</div></div>
       <main>
         <section className="hero-section">
           <div className="hero-grid">
@@ -331,8 +352,72 @@ function App() {
     </div>;
   }
 
+
+  function recordTradePreview(e) {
+    e.preventDefault();
+    const coin = market.find(c => c.id === tradePair) || market[0];
+    const value = Number(tradeAmount);
+    if (!Number.isFinite(value) || value <= 0 || value > 1000000) { notify("Enter a valid demo order amount between $0.01 and $1,000,000."); return; }
+    setTransactions(items => [{id:"GX-ORDER-"+String(items.length+1).padStart(3,"0"),type:"Preview "+tradeSide+" order",asset:coin.symbol,amount:value/coin.price,unit:coin.symbol,date:new Date().toLocaleDateString("en-US",{month:"short",day:"2-digit",year:"numeric"}),status:"Preview only"},...items]);
+    notify("Demo order recorded locally. No order was sent and portfolio balances did not change.");
+    setTab("Activity");
+  }
+
+  function renderTrade() {
+    const coin = market.find(c=>c.id===tradePair) || market[0];
+    const priceText = coin.price>10 ? money(coin.price,2) : money(coin.price,4);
+    const amount = Number(tradeAmount || 0);
+    const qty = Number.isFinite(amount) && amount>0 ? amount/coin.price : 0;
+    const high = coin.high24h ?? coin.price*1.024, low = coin.low24h ?? coin.price*.976;
+    const volume = coin.volume24h ?? coin.marketCap*.035;
+    return <div className="trade-terminal">
+      <section className="trade-pair-bar">
+        <div className="trade-pair-main"><CoinMark coin={coin}/><div><div className="trade-pair-picker"><select aria-label="Select trading pair" value={tradePair} onChange={e=>setTradePair(e.target.value)}>{market.map(c=><option value={c.id} key={c.id}>{c.symbol} / USD</option>)}</select><span className="pair-badge">SPOT</span></div><small>{coin.name} / US Dollar</small></div></div>
+        <div className="trade-pair-price"><b>{priceText}</b><PriceChange value={coin.change}/></div>
+        <div className="trade-pair-stat"><small>24H HIGH</small><b>{money(high,high<1?4:2)}</b></div>
+        <div className="trade-pair-stat"><small>24H LOW</small><b>{money(low,low<1?4:2)}</b></div>
+        <div className="trade-pair-stat"><small>24H VOLUME</small><b>{compactMoney(volume)}</b></div>
+      </section>
+      <div className="trade-disclaimer"><Icon name="info" size={15}/><span><b>Trading terminal preview.</b> Quotes may be live, but order entry is not connected to an exchange. Orders here are illustrative records only.</span><span className={"feed-state "+(marketStatus==="live"?"feed-live":"")}><i/>{marketStatus==="live"?"Quotes live":"Sample quotes"}</span></div>
+      <div className="trade-workspace">
+        <section className="panel-card trade-chart-panel">
+          <div className="trade-panel-title"><div><h2>{coin.name} price chart</h2><p>Public 7-day price sparkline · USD</p></div><span className="chart-range-chip">7D</span></div>
+          <div className="trade-chart-summary"><span>{priceText}</span><PriceChange value={coin.change}/><small>Latest quote</small></div>
+          <div className="trade-chart-wrap"><TradingChart values={coin.spark} color={coin.change>=0?"#17996C":"#D65E70"}/></div>
+          <div className="trade-chart-legend"><span><i style={{background:coin.change>=0?"#17996C":"#D65E70"}}/>{coin.symbol}/USD trend</span><span>{marketStatus==="live"?"CoinGecko market feed":"Illustrative fallback"}</span></div>
+        </section>
+        <section className="panel-card trade-order-panel">
+          <div className="panel-heading"><div><h2>Place an order</h2><p>Controls for presentation preview</p></div><span className="metric-badge">DEMO</span></div>
+          <div className="trade-side-tabs"><button className={tradeSide==="buy"?"side-buy active":""} onClick={()=>setTradeSide("buy")}>Buy {coin.symbol}</button><button className={tradeSide==="sell"?"side-sell active":""} onClick={()=>setTradeSide("sell")}>Sell {coin.symbol}</button></div>
+          <div className="trade-type-tabs">{["Market","Limit"].map(type=><button type="button" key={type} className={tradeOrderType===type?"active":""} onClick={()=>setTradeOrderType(type)}>{type}</button>)}</div>
+          {tradeOrderType==="Limit" && <div className="trade-limit-note"><Icon name="info" size={13}/> Limit execution is not connected.</div>}
+          <form className="trade-order-form" onSubmit={recordTradePreview}>
+            <label>Order value<div className="amount-input-wrap"><input type="number" min="0.01" max="1000000" step="0.01" value={tradeAmount} onChange={e=>setTradeAmount(e.target.value)} required/><span>USD</span></div></label>
+            <div className="quick-amounts">{["50","100","250","500"].map(v=><button type="button" className={tradeAmount===v?"selected":""} key={v} onClick={()=>setTradeAmount(v)}>{"$"}{v}</button>)}</div>
+            <div className="order-estimate"><span>Estimated {tradeSide==="buy"?"receive":"sell"} amount</span><b>{shortNumber(qty,8)} {coin.symbol}</b></div>
+            <div className="order-estimate"><span>Indicative price</span><b>{priceText}</b></div>
+            <div className="order-estimate"><span>Trading fee</span><b>Not calculated</b></div>
+            <button className={"btn auth-submit "+(tradeSide==="buy"?"btn-primary":"trade-sell-button")} type="submit">Preview {tradeSide} order <Icon name="arrowRight" size={15}/></button>
+            <p className="order-footnote">No order is transmitted, no assets are bought or sold, and balances remain unchanged.</p>
+          </form>
+        </section>
+      </div>
+      <div className="trade-lower-grid">
+        <section className="panel-card depth-panel"><div className="panel-heading"><div><h2>Market depth preview</h2><p>Illustrative levels — not a live order book</p></div><span className="metric-badge">NOT LIVE</span></div>
+          <div className="depth-cols"><span>Price (USD)</span><span>Amount ({coin.symbol})</span><span>Total</span></div>
+          <div className="depth-half asks">{[3,2,1].map(i=>{const p=coin.price*(1+i*.0018),q=.25/i;return <div key={i} className="depth-row"><i style={{width:(28+i*17)+"%"}}/><b>{money(p,coin.price<1?4:2)}</b><span>{shortNumber(q,4)}</span><span>{money(p*q)}</span></div>})}</div>
+          <div className="depth-mid"><b>{priceText}</b><PriceChange value={coin.change}/><small>Last market quote</small></div>
+          <div className="depth-half bids">{[1,2,3].map(i=>{const p=coin.price*(1-i*.0018),q=.31/i;return <div key={i} className="depth-row"><i style={{width:(27+i*16)+"%"}}/><b>{money(p,coin.price<1?4:2)}</b><span>{shortNumber(q,4)}</span><span>{money(p*q)}</span></div>})}</div>
+        </section>
+        <section className="panel-card pair-watch-panel"><div className="panel-heading"><div><h2>Market watch</h2><p>Choose a pair to explore</p></div><span className={"feed-state "+(marketStatus==="live"?"feed-live":"")}><i/>{marketStatus==="live"?"Live":"Sample"}</span></div>
+          <div className="pair-watch-list">{market.map(c=><button key={c.id} className={tradePair===c.id?"selected":""} onClick={()=>setTradePair(c.id)}><CoinMark coin={c} size="sm"/><span><b>{c.symbol}/USD</b><small>{c.name}</small></span><span className="pair-watch-price"><b>{c.price>10?money(c.price,2):money(c.price,4)}</b><PriceChange value={c.change}/></span></button>)}</div>
+        </section>
+      </div>
+    </div>;
+  }
+
   function renderDashboard() {
-    const nav = [{ label: "Overview", icon: "grid" }, { label: "Portfolio", icon: "wallet" }, { label: "Markets", icon: "chart" }, { label: "Activity", icon: "activity" }, { label: "Verification", icon: "shield" }, { label: "Profile", icon: "user" }];
+    const nav = [{ label: "Overview", icon: "grid" }, { label: "Trade", icon: "chart" }, { label: "Portfolio", icon: "wallet" }, { label: "Markets", icon: "chart" }, { label: "Activity", icon: "activity" }, { label: "Verification", icon: "shield" }, { label: "Profile", icon: "user" }];
     return <div className="dashboard-layout">
       <aside className={"sidebar " + (menuOpen ? "sidebar-open" : "")}><div className="sidebar-brand"><Brand onClick={() => setView("home")} /></div><div className="sidebar-caption">WORKSPACE</div><nav className="sidebar-nav">{nav.map(item => <button className={tab === item.label ? "selected" : ""} key={item.label} onClick={() => dashboardNav(item.label)}><Icon name={item.icon} size={18} />{item.label}{item.label === "Verification" && <span className="nav-count">!</span>}</button>)}</nav><div className="sidebar-bottom"><div className="support-card"><span className="support-icon"><Icon name="shield" /></span><b>Need a hand?</b><small>Talk to the GROEarnX support team.</small><a href={WHATSAPP_URL} target="_blank" rel="noreferrer">Contact support <Icon name="arrowRight" size={13} /></a></div><button className="sidebar-home" onClick={() => setView("home")}><Icon name="arrowRight" size={15} /> Back to website</button><div className="sidebar-member"><span className="member-avatar">DM</span><span><b>Demo Member</b><small>Preview account</small></span><button title="Exit demo" onClick={() => { setView("home"); notify("You left the demo dashboard."); }}>↗</button></div></div></aside>
       <main className="dashboard-main"><header className="dashboard-topbar"><button className="mobile-menu dash-menu" onClick={() => setMenuOpen(v => !v)} aria-label="Toggle dashboard menu"><Icon name="menu" /></button><div className="breadcrumbs">Workspace <span>/</span> <b>{tab}</b></div><div className="dashboard-top-actions"><span className="demo-chip"><span className="status-dot" /> DEMO MODE</span><button className="icon-button" aria-label="Notifications" onClick={() => notify("No new notifications in this preview.")}><Icon name="bell" /></button><span className="top-avatar">DM</span></div></header>
@@ -353,6 +438,7 @@ function App() {
             <section className="panel-card dashboard-market-panel"><div className="panel-heading"><div><h2>Market watch</h2><p>{marketStatus === "live" ? "Public market quotes · USD" : "Illustrative sample quotes · USD"}</p></div><button className="text-link" onClick={() => setTab("Markets")}>All markets <Icon name="arrowRight" size={14} /></button></div><MarketTable rows={market.slice(0,4)} /></section>
             <section className="panel-card activity-panel"><div className="panel-heading"><div><h2>Recent activity</h2><p>These examples exist only in this demo session.</p></div><button className="text-link" onClick={() => setTab("Activity")}>View activity <Icon name="arrowRight" size={14} /></button></div><ActivityTable items={transactions.slice(0,3)} /></section>
           </>}
+          {tab === "Trade" && renderTrade()}
           {tab === "Portfolio" && <section className="panel-card route-panel"><div className="panel-heading"><div><h2>Your sample assets</h2><p>Quantity × current quote; real account data is not connected.</p></div><button className="btn btn-primary btn-sm" onClick={() => openRequest("deposit")}><Icon name="plus" size={14}/> Deposit request</button></div><div className="portfolio-summary-strip"><span>Illustrative total value</span><strong>{showBalances ? money(portfolioValue) : "••••••"}</strong><button className="eye-toggle" onClick={() => setShowBalances(v => !v)}><Icon name="eye" size={15}/></button></div><div className="table-wrap"><table className="market-table portfolio-table"><thead><tr><th>Asset</th><th>Units</th><th>Price</th><th>Value</th><th>24h</th></tr></thead><tbody>{portfolioRows.map(c=><tr key={c.id}><td><div className="asset-cell"><CoinMark coin={c}/><div><b>{c.name}</b><small>{c.symbol}</small></div></div></td><td>{shortNumber(c.units,8)} {c.symbol}</td><td>{c.price > 10 ? money(c.price) : money(c.price,4)}</td><td><b>{showBalances ? money(c.value) : "••••"}</b></td><td><PriceChange value={c.change}/></td></tr>)}</tbody></table></div></section>}
           {tab === "Markets" && <section className="panel-card route-panel"><div className="panel-heading"><div><h2>Crypto markets</h2><p>{marketStatus === "live" ? "Public market data with sample chart lines." : "Feed unavailable: showing sample quotes only."}</p></div><span className={"feed-state " + (marketStatus === "live" ? "feed-live" : "")}><i />{marketStatus === "live" ? "Live quotes" : "Sample feed"}</span></div><MarketTable rows={market}/><p className="data-note"><Icon name="info" size={14}/> Market prices change frequently. This page is informational and does not execute trades.</p></section>}
           {tab === "Activity" && <section className="panel-card route-panel"><div className="panel-heading"><div><h2>Transaction activity</h2><p>Demo requests are temporary and are not payment records.</p></div><div className="inline-buttons"><button className="btn btn-outline btn-sm" onClick={() => openRequest("withdraw")}>Withdraw</button><button className="btn btn-primary btn-sm" onClick={() => openRequest("deposit")}>Deposit</button></div></div><ActivityTable items={transactions}/><div className="activity-note"><Icon name="info" size={16}/> A real ledger must only mark a deposit settled after provider or blockchain confirmation.</div></section>}
