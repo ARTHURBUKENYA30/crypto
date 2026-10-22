@@ -285,7 +285,7 @@ function App() {
               <div className="float-pill pill-top"><span className="status-dot" /> Markets move. Stay informed.</div>
               <div className="hero-card">
                 <div className="hero-card-head"><div><small>MARKET SNAPSHOT</small><span className="mini-live">{marketStatus === "live" ? "LIVE DATA" : "SAMPLE DATA"}</span></div><span className="round-icon"><Icon name="chart" size={17} /></span></div>
-                <div className="hero-total-label">Total crypto market cap</div>
+                <div className="hero-total-label">Combined market cap · top 5 assets</div>
                 <div className="hero-total">{marketStatus === "live" ? compactMoney(market.reduce((sum, c) => sum + c.marketCap, 0)) : "Market feed preview"}</div>
                 <div className="hero-total-meta"><span className="muted-cell">{marketStatus === "live" ? "Market data feed connected" : "Waiting for public market feed"}</span><span className="data-safe"><Icon name="shield" size={13} /> Data status shown</span></div>
                 <div className="hero-chart"><Sparkline values={market[0]?.spark} color="#1CA77D" width={470} height={108} fill /></div>
