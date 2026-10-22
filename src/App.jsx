@@ -456,12 +456,12 @@ function App() {
               <div className="hero-orbit orbit-one" /><div className="hero-orbit orbit-two" />
               <div className="float-pill pill-top"><span className="status-dot" /> Markets move. Stay informed.</div>
               <div className="hero-card">
-                <div className="hero-card-head"><div><small>MARKET SNAPSHOT</small><span className="mini-live">{marketStatus === "live" ? "LIVE DATA" : "SAMPLE DATA"}</span></div><span className="round-icon"><Icon name="chart" size={17} /></span></div>
+                <div className="hero-card-head"><div><small>MARKET SNAPSHOT</small><span className="mini-live">{marketStatus === "live" ? "LIVE DATA" : "FEED UNAVAILABLE"}</span></div><span className="round-icon"><Icon name="chart" size={17} /></span></div>
                 <div className="hero-total-label">Combined market cap · top 5 assets</div>
                 <div className="hero-total">{marketStatus === "live" ? compactMoney(market.reduce((sum, c) => sum + c.marketCap, 0)) : "Market feed status"}</div>
                 <div className="hero-total-meta"><span className="muted-cell">{marketStatus === "live" ? "Market data feed connected" : "Waiting for public market feed"}</span><span className="data-safe"><Icon name="shield" size={13} /> Data status shown</span></div>
                 <div className="hero-chart"><Sparkline values={market[0]?.spark} color="#1CA77D" width={470} height={108} fill /></div>
-                <div className="hero-chart-foot"><span>Recent market trend</span><span>{marketStatus === "live" ? "CoinGecko feed" : "Illustrative fallback"}</span></div>
+                <div className="hero-chart-foot"><span>Recent market trend</span><span>{marketStatus === "live" ? "CoinGecko feed" : "Market data unavailable"}</span></div>
                 <div className="mini-assets">{market.slice(0, 3).map(coin => <div className="mini-asset" key={coin.id}><CoinMark coin={coin} size="sm" /><div><small>{coin.symbol}</small><b>{coin.price > 10 ? money(coin.price, 0) : money(coin.price, 4)}</b></div><PriceChange value={coin.change} /></div>)}</div>
               </div>
               <div className="float-pill pill-bottom"><span className="tiny-spark">↗</span> A clearer view of every move</div>
@@ -478,7 +478,7 @@ function App() {
 
         <section className="market-section section-shell" id="markets">
           <div className="section-heading"><div><span className="section-kicker">THE MARKET, AT A GLANCE</span><h2>Explore digital assets</h2><p>Market prices update when the public data feed is available.</p></div><button className="text-link" onClick={() => { setView("dashboard"); setTab("Markets"); }}>Open market dashboard <Icon name="arrowRight" size={15} /></button></div>
-          <div className="market-card"><div className="market-card-top"><div><b>Top cryptocurrencies</b><span className={"feed-state " + (marketStatus === "live" ? "feed-live" : "")}><i />{marketStatus === "live" ? "Live quotes" : "Illustrative sample quotes"}</span></div><span className="as-of">{lastUpdated ? "Updated " + lastUpdated.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "Connects to public market data"}</span></div><MarketTable rows={market} /></div>
+          <div className="market-card"><div className="market-card-top"><div><b>Top cryptocurrencies</b><span className={"feed-state " + (marketStatus === "live" ? "feed-live" : "")}><i />{marketStatus === "live" ? "Live quotes" : "Quotes unavailable"}</span></div><span className="as-of">{lastUpdated ? "Updated " + lastUpdated.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "Connects to public market data"}</span></div><MarketTable rows={market} /></div>
           {marketStatus !== "live" && <p className="data-note"><Icon name="info" size={14} /> Prices are unavailable while the public market feed is disconnected.</p>}
         </section>
 
@@ -497,7 +497,7 @@ function App() {
       </div>
       <div className="auth-main"><div className="auth-mobile-brand"><Brand onClick={() => setView("home")}/></div><button className="auth-back" onClick={() => { setMfaLogin(null); setView("signin"); }}>← Back to sign in</button>
         <div className="auth-form-wrap"><div className="auth-form-heading"><span className="section-kicker">VERIFY YOUR IDENTITY</span><h2>Enter authenticator code</h2><p>Use the six-digit code from your authenticator app.</p></div>
-          <form className="auth-form" onSubmit={verifyMfaLogin}><label>Authentication code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e=>setMfaCode(e.target.value.replace(/\\D/g,"").slice(0,6))} placeholder="000000" required/></label><button className="btn btn-primary auth-submit" type="submit" disabled={mfaBusy || mfaCode.length!==6}>{mfaBusy ? "Verifying…" : "Verify and continue"} <Icon name="arrowRight" size={16}/></button></form>
+          <form className="auth-form" onSubmit={verifyMfaLogin}><label>Authentication code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e=>setMfaCode(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="000000" required/></label><button className="btn btn-primary auth-submit" type="submit" disabled={mfaBusy || mfaCode.length!==6}>{mfaBusy ? "Verifying…" : "Verify and continue"} <Icon name="arrowRight" size={16}/></button></form>
           <div className="auth-legal">Keep your authenticator device secure. If you lose it, use the verified account-recovery process.</div>
         </div>
         <div className="auth-bottom-line"><span>© {new Date().getFullYear()} GROEarnX</span><a href={WHATSAPP_URL} target="_blank" rel="noreferrer">Support <Icon name="external" size={12}/></a></div>
@@ -613,18 +613,13 @@ function App() {
             <div className="order-estimate"><span>Estimated {tradeSide==="buy"?"receive":"sell"} amount</span><b>{shortNumber(qty,8)} {coin.symbol}</b></div>
             <div className="order-estimate"><span>Indicative price</span><b>{priceText}</b></div>
             <div className="order-estimate"><span>Trading fee</span><b>Not calculated</b></div>
-            <button className={"btn auth-submit "+(tradeSide==="buy"?"btn-primary":"trade-sell-button")} type="submit">Preview {tradeSide} order <Icon name="arrowRight" size={15}/></button>
+            <button className={"btn auth-submit "+(tradeSide==="buy"?"btn-primary":"trade-sell-button")} type="submit" disabled>Trading unavailable <Icon name="lock" size={15}/></button>
             <p className="order-footnote">No order is transmitted, no assets are bought or sold, and balances remain unchanged.</p>
           </form>
         </section>
       </div>
       <div className="trade-lower-grid">
-        <section className="panel-card depth-panel"><div className="panel-heading"><div><h2>Market depth</h2><p>Illustrative levels — not a live order book</p></div><span className="metric-badge">NOT CONNECTED</span></div>
-          <div className="depth-cols"><span>Price (USD)</span><span>Amount ({coin.symbol})</span><span>Total</span></div>
-          <div className="depth-half asks">{[3,2,1].map(i=>{const p=coin.price*(1+i*.0018),q=.25/i;return <div key={i} className="depth-row"><i style={{width:(28+i*17)+"%"}}/><b>{money(p,coin.price<1?4:2)}</b><span>{shortNumber(q,4)}</span><span>{money(p*q)}</span></div>})}</div>
-          <div className="depth-mid"><b>{priceText}</b><PriceChange value={coin.change}/><small>Last market quote</small></div>
-          <div className="depth-half bids">{[1,2,3].map(i=>{const p=coin.price*(1-i*.0018),q=.31/i;return <div key={i} className="depth-row"><i style={{width:(27+i*16)+"%"}}/><b>{money(p,coin.price<1?4:2)}</b><span>{shortNumber(q,4)}</span><span>{money(p*q)}</span></div>})}</div>
-        </section>
+        <section className="panel-card depth-panel"><div className="panel-heading"><div><h2>Market depth</h2><p>Order book data requires a live exchange connection.</p></div><span className="metric-badge">NOT CONNECTED</span></div><div className="empty-state"><Icon name="info" size={24}/><b>Order book unavailable</b><span>Live bid/ask depth will appear after a supported exchange provider is connected. No synthetic market depth is displayed.</span></div></section>
         <section className="panel-card pair-watch-panel"><div className="panel-heading"><div><h2>Market watch</h2><p>Choose a pair to explore</p></div><span className={"feed-state "+(marketStatus==="live"?"feed-live":"")}><i/>{marketStatus==="live"?"Live":"Sample"}</span></div>
           <div className="pair-watch-list">{market.map(c=><button key={c.id} className={tradePair===c.id?"selected":""} onClick={()=>setTradePair(c.id)}><CoinMark coin={c} size="sm"/><span><b>{c.symbol}/USD</b><small>{c.name}</small></span><span className="pair-watch-price"><b>{c.price>10?money(c.price,2):money(c.price,4)}</b><PriceChange value={c.change}/></span></button>)}</div>
         </section>
@@ -651,7 +646,7 @@ function App() {
               </section>
               <section className="panel-card quick-actions-panel"><div className="panel-heading"><div><h2>Quick actions</h2><p>Deposit and withdrawal availability</p></div></div><button className="action-tile" onClick={() => openRequest("deposit")}><span className="action-tile-icon deposit"><Icon name="arrowDown" /></span><span><b>Make a deposit request</b><small>Crypto or mobile money · provider required</small></span><Icon name="arrowRight" size={16} /></button><button className="action-tile" onClick={() => openRequest("withdraw")}><span className="action-tile-icon withdraw"><Icon name="arrowUp" /></span><span><b>Make a withdrawal request</b><small>Payout provider required</small></span><Icon name="arrowRight" size={16} /></button><button className="action-tile" onClick={() => setTab("Markets")}><span className="action-tile-icon market"><Icon name="chart" /></span><span><b>Explore the market</b><small>Check price movements</small></span><Icon name="arrowRight" size={16} /></button></section>
             </div>
-            <section className="panel-card dashboard-market-panel"><div className="panel-heading"><div><h2>Market watch</h2><p>{marketStatus === "live" ? "Public market quotes · USD" : "Illustrative sample quotes · USD"}</p></div><button className="text-link" onClick={() => setTab("Markets")}>All markets <Icon name="arrowRight" size={14} /></button></div><MarketTable rows={market.slice(0,4)} /></section>
+            <section className="panel-card dashboard-market-panel"><div className="panel-heading"><div><h2>Market watch</h2><p>{marketStatus === "live" ? "Public market quotes · USD" : "Market quote unavailable · USD"}</p></div><button className="text-link" onClick={() => setTab("Markets")}>All markets <Icon name="arrowRight" size={14} /></button></div><MarketTable rows={market.slice(0,4)} /></section>
             <section className="panel-card activity-panel"><div className="panel-heading"><div><h2>Recent activity</h2><p>Recent activity from your account.</p></div><button className="text-link" onClick={() => setTab("Activity")}>View activity <Icon name="arrowRight" size={14} /></button></div><ActivityTable items={transactions.slice(0,3)} /></section>
           </>}
           {tab === "Trade" && renderTrade()}
@@ -689,7 +684,7 @@ function App() {
       <form className="request-form" onSubmit={submitRequest}><label>Amount {asset.type === "mobile" ? (request.country === "Uganda" ? "(UGX)" : "(USD)") : "(" + (asset.id === "bitcoin" ? "BTC" : asset.id === "ethereum" ? "ETH" : "USDT") + ")"}
         <div className="amount-input-wrap"><input type="number" min="0.000001" step="any" value={request.amount} onChange={e => changeRequest("amount",e.target.value)} placeholder="0.00" required/><span>{asset.type === "mobile" ? (request.country === "Uganda" ? "UGX" : "USD") : asset.id === "bitcoin" ? "BTC" : asset.id === "ethereum" ? "ETH" : "USDT"}</span></div></label>
         {asset.type === "crypto" ? <label>Network<select value={request.network} onChange={e=>changeRequest("network",e.target.value)}>{(asset.id === "bitcoin" ? ["Bitcoin network"] : asset.id === "ethereum" ? ["Ethereum mainnet"] : ["TRC20","ERC20"]).map(n=><option key={n}>{n}</option>)}</select><small className="field-help">Only choose a real network after wallet infrastructure and the matching deposit/withdrawal address are configured.</small></label> : <><label>Country / region<select value={request.country} onChange={e=>changeRequest("country",e.target.value)}>{COUNTRIES.map(c=><option key={c}>{c}</option>)}</select></label><label>Mobile money provider<select value={request.provider} onChange={e=>changeRequest("provider",e.target.value)}>{["MTN Mobile Money","Airtel Money","M-Pesa","Other provider"].map(p=><option key={p}>{p}</option>)}</select></label><label>Mobile money phone number<input type="tel" value={request.phone} onChange={e=>changeRequest("phone",e.target.value)} placeholder="+256 … / country code" required/><small className="field-help">A payment provider must be connected before this can initiate a payment.</small></label></>}
-        {!deposit && asset.type === "crypto" && <label>Destination wallet address<input value={request.destination} onChange={e=>changeRequest("destination",e.target.value)} placeholder="Destination address (not sent in preview)" required/><small className="field-help">Never send to an address until the network and recipient have been independently verified.</small></label>}
+        {!deposit && asset.type === "crypto" && <label>Destination wallet address<input value={request.destination} onChange={e=>changeRequest("destination",e.target.value)} placeholder="Destination wallet address" required/><small className="field-help">Never send to an address until the network and recipient have been independently verified.</small></label>}
         <div className="request-warning"><Icon name="info" size={17}/><span><b>Service unavailable.</b> {deposit ? "A verified custody wallet or mobile-money collection provider is not connected." : "Withdrawals are disabled until a verified custody wallet or payout provider is connected."} Do not send funds to this platform yet.</span></div>
         <label className="check-row request-check"><input type="checkbox" required checked={request.acknowledged} onChange={e=>changeRequest("acknowledged",e.target.checked)}/><span>I understand the requested service is currently unavailable and this form will not move funds.</span></label>
         <button className="btn btn-primary auth-submit" type="submit" disabled>{deposit ? "Deposits unavailable" : "Withdrawals unavailable"}</button>
@@ -703,11 +698,15 @@ function App() {
 
   function dashboardDescription(activeTab) {
     return ({
-      "Portfolio": "Review the sample asset quantities and their current estimated market value.",
-      "Markets": "Track public market quotes; sample fallback values are clearly marked.",
-      "Activity": "Review requests in this browser session. They are not completed financial transactions.",
-      "Verification": "Understand the secure identity checks required before a real account can be enabled.",
-      "Profile": "Review the information fields planned for a future authenticated account.",
+      "Portfolio": "Review posted asset balances and their current USD value.",
+      "Markets": "Track public quotes when the market-data feed is available.",
+      "Activity": "Review transaction requests and settlement status from your account.",
+      "Investment Plans": "Review active plans and their risk and fee disclosures.",
+      "Notifications": "Review account, security and transaction notices.",
+      "Security": "Manage authenticator-based two-factor authentication.",
+      "Verification": "Check the current status of identity verification.",
+      "Profile": "Update your name, country and contact information.",
+      "Admin": "Review account and transaction requests as an authorized administrator.",
     })[activeTab] || "Your GROEarnX workspace.";
   }
   function donutGradient(rows) {
