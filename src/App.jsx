@@ -182,17 +182,22 @@ function App() {
   }, [toast]);
 
   const coinById = useMemo(() => Object.fromEntries(market.map(c => [c.id, c])), [market]);
-  const portfolioRows = useMemo(() => market.map(coin => {
-    const units = Number(walletBalances[coin.symbol] || 0);
-    const value = coin.price * units;
-    const divisor = 1 + (Number.isFinite(coin.change) ? coin.change : 0) / 100;
-    const previousValue = divisor > 0 ? value / divisor : value;
-    return { ...coin, units, value, previousValue };
+  const portfolioRows = useMemo(() => ASSET_META.map(asset => {
+    const quote = market.find(coin => coin.id === asset.id);
+    const units = Number(walletBalances[asset.symbol] || 0);
+    const price = Number.isFinite(quote?.price) ? quote.price : null;
+    const change = Number.isFinite(quote?.change) ? quote.change : null;
+    const value = price === null ? null : price * units;
+    const divisor = change === null ? null : 1 + change / 100;
+    const previousValue = value === null || divisor === null || divisor <= 0 ? null : value / divisor;
+    return { ...asset, ...(quote || {}), price, change, units, value, previousValue };
   }), [market, walletBalances]);
-  const portfolioValue = portfolioRows.reduce((sum, coin) => sum + (Number.isFinite(coin.value) ? coin.value : 0), 0);
-  const previousValue = portfolioRows.reduce((sum, coin) => sum + (Number.isFinite(coin.previousValue) ? coin.previousValue : 0), 0);
-  const dailyChange = portfolioValue - previousValue;
-  const dailyChangePct = previousValue ? (dailyChange / previousValue) * 100 : 0;
+  const completeValuation = portfolioRows.length > 0 && portfolioRows.every(coin => Number.isFinite(coin.value));
+  const portfolioValue = completeValuation ? portfolioRows.reduce((sum, coin) => sum + coin.value, 0) : NaN;
+  const completePreviousValuation = portfolioRows.length > 0 && portfolioRows.every(coin => Number.isFinite(coin.previousValue));
+  const previousValue = completePreviousValuation ? portfolioRows.reduce((sum, coin) => sum + coin.previousValue, 0) : NaN;
+  const dailyChange = Number.isFinite(portfolioValue) && Number.isFinite(previousValue) ? portfolioValue - previousValue : NaN;
+  const dailyChangePct = Number.isFinite(previousValue) && previousValue !== 0 && Number.isFinite(dailyChange) ? (dailyChange / previousValue) * 100 : NaN;
   const isAdmin = authUser?.app_metadata?.role === "admin";
   const memberName = profile.name || authUser?.user_metadata?.display_name || authUser?.email?.split("@")[0] || "Account holder";
   const memberInitials = memberName.split(/\s+/).slice(0,2).map(s=>s[0] || "").join("").toUpperCase() || "GX";
@@ -448,7 +453,7 @@ function App() {
 
   function renderHome() {
     return <>{renderHeader()}
-      <div className="market-ticker-bar"><div className="market-ticker-label"><span className="status-dot" /> MARKET WATCH</div><div className="market-ticker-items">{market.slice(0, 5).map(coin => <button key={coin.id} onClick={() => { setTradePair(coin.id); setView("dashboard"); setTab("Trade"); }}><span className="ticker-symbol">{coin.symbol}</span><b>{coin.price > 10 ? money(coin.price, 2) : money(coin.price, 4)}</b><PriceChange value={coin.change} /></button>)}</div></div>
+      <div className="market-ticker-bar"><div className="market-ticker-label"><span className="status-dot" /> MARKET WATCH</div><div className="market-ticker-items">{market.slice(0, 5).map(coin => <button key={coin.id} onClick={() => { setTradePair(coin.id); if (authUser) { setView("dashboard"); setTab("Trade"); } else openAuth("signin"); }}><span className="ticker-symbol">{coin.symbol}</span><b>{coin.price > 10 ? money(coin.price, 2) : money(coin.price, 4)}</b><PriceChange value={coin.change} /></button>)}</div></div>
       <main>
         <section className="hero-section">
           <div className="hero-grid">
@@ -484,7 +489,7 @@ function App() {
         </section>
 
         <section className="market-section section-shell" id="markets">
-          <div className="section-heading"><div><span className="section-kicker">THE MARKET, AT A GLANCE</span><h2>Explore digital assets</h2><p>Market prices update when the public data feed is available.</p></div><button className="text-link" onClick={() => { setView("dashboard"); setTab("Markets"); }}>Open market dashboard <Icon name="arrowRight" size={15} /></button></div>
+          <div className="section-heading"><div><span className="section-kicker">THE MARKET, AT A GLANCE</span><h2>Explore digital assets</h2><p>Market prices update when the public data feed is available.</p></div><button className="text-link" onClick={() => { if (authUser) { setView("dashboard"); setTab("Markets"); } else openAuth("signin"); }}>Open market dashboard <Icon name="arrowRight" size={15} /></button></div>
           <div className="market-card"><div className="market-card-top"><div><b>Top cryptocurrencies</b><span className={"feed-state " + (marketStatus === "live" ? "feed-live" : "")}><i />{marketStatus === "live" ? "Live quotes" : "Quotes unavailable"}</span></div><span className="as-of">{lastUpdated ? "Updated " + lastUpdated.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "Connects to public market data"}</span></div><MarketTable rows={market} /></div>
           {marketStatus !== "live" && <p className="data-note"><Icon name="info" size={14} /> Prices are unavailable while the public market feed is disconnected.</p>}
         </section>
@@ -643,7 +648,7 @@ function App() {
           <div className="dashboard-demo-banner"><span><Icon name="info" size={17} /></span><div><b>Your account overview</b><p>Only posted ledger balances are shown here. Market-price changes can increase or decrease the value of your holdings. Deposits, withdrawals and trading require verified service integrations.</p></div><button onClick={() => notify("Real balances should come from a server-side ledger reconciled with trusted wallet/payment providers.")}>How balances work <Icon name="arrowRight" size={13} /></button></div>
           {tab === "Overview" && <>
             <div className="dashboard-metric-grid">
-              <section className="metric-card primary-metric"><div className="metric-label"><span>Portfolio value</span><button className="eye-toggle" aria-label="Toggle sample balance visibility" onClick={() => setShowBalances(v => !v)}><Icon name="eye" size={16} /></button></div><div className="metric-number">{showBalances ? money(portfolioValue) : "••••••••"}</div><div className="metric-foot"><span className={"metric-change " + (dailyChange >= 0 ? "positive" : "negative")}>{dailyChange >= 0 ? "+" : "−"}{money(Math.abs(dailyChange))} ({changeText(dailyChangePct)})</span><span>24h portfolio change</span></div><div className="metric-chart">{portfolioHistory.length > 1 ? <Sparkline values={portfolioHistory.map(point=>Number(point.total_value_usd))} color="#FFFFFF" width={350} height={77} fill/> : <span className="chart-note">Portfolio history appears after valuation snapshots are recorded.</span>}</div><small className="metric-period">{marketStatus === "live" ? "Calculated from posted units × live prices" : "Portfolio value updates when settled units and current market quotes are available"}</small></section>
+              <section className="metric-card primary-metric"><div className="metric-label"><span>Portfolio value</span><button className="eye-toggle" aria-label="Toggle sample balance visibility" onClick={() => setShowBalances(v => !v)}><Icon name="eye" size={16} /></button></div><div className="metric-number">{showBalances ? money(portfolioValue) : "••••••••"}</div><div className="metric-foot">{Number.isFinite(dailyChange) ? <><span className={"metric-change " + (dailyChange >= 0 ? "positive" : "negative")}>{dailyChange >= 0 ? "+" : "−"}{money(Math.abs(dailyChange))} ({changeText(dailyChangePct)})</span><span>estimated from current posted holdings</span></> : <><span className="metric-change">Unavailable</span><span>Fresh quotes needed to value posted assets</span></>}</div><div className="metric-chart">{portfolioHistory.length > 1 ? <Sparkline values={portfolioHistory.map(point=>Number(point.total_value_usd))} color="#FFFFFF" width={350} height={77} fill/> : <span className="chart-note">Portfolio history appears after valuation snapshots are recorded.</span>}</div><small className="metric-period">{marketStatus === "live" ? "Calculated from posted units × live prices" : "Portfolio value updates when settled units and current market quotes are available"}</small></section>
               <section className="metric-card"><div className="metric-card-top"><span className="metric-icon"><Icon name="wallet" /></span><span className="metric-badge">ACCOUNT</span></div><div className="metric-label">Assets tracked</div><div className="metric-number small-number">{portfolioRows.filter(c => c.units > 0).length}</div><p className="metric-caption">Assets with posted balances</p><button className="metric-link" onClick={() => setTab("Portfolio")}>View portfolio <Icon name="arrowRight" size={14} /></button></section>
               <section className="metric-card"><div className="metric-card-top"><span className="metric-icon purple"><Icon name="activity" /></span><span className="metric-badge">SESSION</span></div><div className="metric-label">Activity requests</div><div className="metric-number small-number">{transactions.length}</div><p className="metric-caption">Account activity loaded from your records</p><button className="metric-link" onClick={() => setTab("Activity")}>View activity <Icon name="arrowRight" size={14} /></button></section>
             </div>
