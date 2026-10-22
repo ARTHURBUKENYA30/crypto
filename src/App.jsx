@@ -122,6 +122,8 @@ function App() {
   const [mfaCode, setMfaCode] = useState("");
   const [mfaLogin, setMfaLogin] = useState(null);
   const [mfaBusy, setMfaBusy] = useState(false);
+  const [adminRequests, setAdminRequests] = useState([]);
+  const [adminUserCount, setAdminUserCount] = useState(null);
   const [legalPage, setLegalPage] = useState(null);
   const [tab, setTab] = useState("Overview");
   const [market, setMarket] = useState([]);
@@ -363,6 +365,20 @@ function App() {
     loadAccountData().catch(() => { if (active) notify("Some account information could not be loaded. Refresh the page or contact support."); });
     return () => { active = false; };
   }, [authUser]);
+  useEffect(() => {
+    if (!supabaseConfigured || !authUser || !isAdmin || tab !== "Admin") return;
+    let active = true;
+    Promise.all([
+      supabase.from("transaction_requests").select("id,user_id,request_type,asset_code,amount,status,created_at").order("created_at", { ascending: false }).limit(100),
+      supabase.from("profiles").select("id", { count: "exact", head: true }),
+    ]).then(([requestResult, userResult]) => {
+      if (!active) return;
+      if (requestResult.data) setAdminRequests(requestResult.data);
+      if (!userResult.error) setAdminUserCount(userResult.count ?? null);
+    }).catch(() => { if (active) notify("The admin queue could not be loaded. Check the assigned admin role and database policies."); });
+    return () => { active = false; };
+  }, [authUser, isAdmin, tab]);
+
   function changeRequest(key, value) { setRequest(r => ({ ...r, [key]: value })); }
   function changeRequest(key, value) { setRequest(r => ({ ...r, [key]: value })); }
   function openRequest(direction, asset = "usdt") {
@@ -405,7 +421,7 @@ function App() {
         <div className="footer-copy">Clearer crypto decisions start with better information.</div>
         <div className="footer-contact"><span>Support</span><a href={"tel:" + CONTACT_PHONE}>{CONTACT_PHONE}</a><a href={WHATSAPP_URL} target="_blank" rel="noreferrer">WhatsApp support <Icon name="external" size={13} /></a></div>
       </div>
-      <div className="footer-bottom"><span>© {new Date().getFullYear()} GROEarnX. For informational use.</span><span>Crypto assets are volatile. No returns are guaranteed.</span><span className="footer-legal"><a href="#privacy" onClick={e => {e.preventDefault(); notify("Privacy policy content must be finalized before launch.");}}>Privacy</a><a href="#terms" onClick={e => {e.preventDefault(); notify("Terms must be reviewed for the jurisdictions where GROEarnX operates.");}}>Terms</a></span></div>
+      <div className="footer-bottom"><span>© {new Date().getFullYear()} GROEarnX. Digital assets involve risk.</span><span>Returns are not guaranteed.</span><span className="footer-legal"><a href="#terms" onClick={e=>{e.preventDefault();setLegalPage("Terms of Service");}}>Terms</a><a href="#privacy" onClick={e=>{e.preventDefault();setLegalPage("Privacy Policy");}}>Privacy</a><a href="#fees" onClick={e=>{e.preventDefault();setLegalPage("Fees");}}>Fees</a><a href="#risk" onClick={e=>{e.preventDefault();setLegalPage("Risk Disclosure");}}>Risk disclosure</a></span></div>
     </footer>;
   }
 
@@ -471,6 +487,58 @@ function App() {
         </section>
         <section className="cta-section"><div><span className="section-kicker">YOUR NEXT STEP</span><h2>Make the market<br />easier to understand.</h2><p>Create a secure account to manage your profile and follow live market information.</p></div><div className="cta-actions"><button className="btn btn-primary btn-lg" onClick={() => openAuth("signup")}>Get started <Icon name="arrowRight" size={15} /></button><button className="btn btn-quiet btn-lg" onClick={() => openAuth("signin")}>Sign in to your account</button><small>Deposits and withdrawals require verified provider integrations.</small></div></section>
       </main>{renderFooter()}</>;
+  }
+
+  function renderMfaChallenge() {
+    return <div className="auth-page">
+      <div className="auth-brand-rail"><div className="auth-rail-top"><Brand onClick={() => setView("home")} /><span className="auth-rail-pill"><span className="status-dot" /> ACCOUNT SECURITY</span></div>
+        <div className="auth-promo"><span className="eyebrow"><span className="eyebrow-dot" /> TWO-FACTOR AUTHENTICATION</span><h1>One more step<br />to keep your account <em>secure.</em></h1><p>Enter the current one-time code from the authenticator app enrolled with your account.</p></div>
+        <div className="auth-rail-footer"><span className="rail-seal"><Icon name="shield" size={17}/></span><span>Never share your one-time code.<br/><b>GROEarnX support will not ask for it.</b></span></div>
+      </div>
+      <div className="auth-main"><div className="auth-mobile-brand"><Brand onClick={() => setView("home")}/></div><button className="auth-back" onClick={() => { setMfaLogin(null); setView("signin"); }}>← Back to sign in</button>
+        <div className="auth-form-wrap"><div className="auth-form-heading"><span className="section-kicker">VERIFY YOUR IDENTITY</span><h2>Enter authenticator code</h2><p>Use the six-digit code from your authenticator app.</p></div>
+          <form className="auth-form" onSubmit={verifyMfaLogin}><label>Authentication code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e=>setMfaCode(e.target.value.replace(/\\D/g,"").slice(0,6))} placeholder="000000" required/></label><button className="btn btn-primary auth-submit" type="submit" disabled={mfaBusy || mfaCode.length!==6}>{mfaBusy ? "Verifying…" : "Verify and continue"} <Icon name="arrowRight" size={16}/></button></form>
+          <div className="auth-legal">Keep your authenticator device secure. If you lose it, use the verified account-recovery process.</div>
+        </div>
+        <div className="auth-bottom-line"><span>© {new Date().getFullYear()} GROEarnX</span><a href={WHATSAPP_URL} target="_blank" rel="noreferrer">Support <Icon name="external" size={12}/></a></div>
+      </div>
+    </div>;
+  }
+
+  function renderLegalModal() {
+    if (!legalPage) return null;
+    const content = {
+      "Terms of Service": [
+        "GROEarnX account and market-information terms",
+        "Account creation is subject to email verification, eligibility checks, sanctions screening and any identity verification required for the services offered in your location. Keep your credentials and authenticator codes private.",
+        "Market prices can be delayed, incomplete or unavailable. Displayed market data is informational and is not an offer to buy or sell an asset. A trade is only accepted when a connected execution provider confirms it.",
+        "A deposit request is not a completed deposit. A withdrawal is not complete until the relevant provider or blockchain confirms settlement. Network transfers can be irreversible, and sending assets over the wrong network can cause permanent loss.",
+        "Crypto assets are volatile. No investment return is promised. Any future product must have separate terms describing eligibility, fees, risks, return calculations and withdrawal restrictions.",
+        "Before U.S. customer onboarding, the operator must publish its legal entity name, business address, regulator and licence disclosures where applicable, complaints procedure, privacy contact and state-by-state eligibility. U.S. counsel should review these terms before they are treated as final."
+      ],
+      "Privacy Policy": [
+        "Account information and privacy",
+        "GROEarnX uses account information such as your email address, display name, country and contact details to operate account features and provide support. Authentication is handled by the connected Supabase Auth service.",
+        "The regular registration form does not collect national-ID or driving-permit numbers. Where verification is legally required, those documents should be submitted directly to an approved identity-verification provider. GROEarnX should retain only the minimum provider status and reference required.",
+        "Account records may be processed by contracted infrastructure providers. Confirm the actual hosting region, subprocessors, retention periods, deletion process, incident response and any cross-border transfers before onboarding customers.",
+        "Do not send passwords, recovery phrases, one-time authentication codes or full identity documents through WhatsApp or ordinary email. Contact support to request help with account-data access or correction.",
+        "This policy must be completed by the operator with the final legal entity, state privacy obligations, formal privacy contact, retention schedule and counsel-approved disclosures before public launch."
+      ],
+      "Fees": [
+        "Fees and charges",
+        "The final schedule must disclose every applicable trading fee, spread, deposit fee, withdrawal fee, network fee, mobile-money or bank fee, FX conversion charge, custody fee and any plan management or early-exit fee.",
+        "Network fees can vary with congestion and provider pricing. Third-party fees may change and must be shown before a customer confirms a transaction.",
+        "No fee schedule or provider pricing has been configured in the application yet. Do not accept customer payments or advertise a fee-free service until actual prices and the customer confirmation screens have been approved."
+      ],
+      "Risk Disclosure": [
+        "Digital-asset risk disclosure",
+        "Crypto assets are highly volatile and customers can lose some or all of the value they commit. Stablecoins can lose their peg, blockchain transactions can be irreversible, networks can halt or congest, and custody or payment providers can fail.",
+        "Market prices, token liquidity and execution prices may differ across providers. Past performance is not a reliable indicator of future results. Estimated portfolio values can rise or fall and are not guaranteed returns.",
+        "Never transfer assets until the recipient address, token contract and network are verified. GROEarnX should not hold or move client assets until its custody design, controls, provider contracts and applicable authorizations are complete.",
+        "Do not send additional money to unlock an advertised profit, release a withdrawal, or pay an unexpected tax demanded by a stranger. Seek independent professional advice before investing."
+      ]
+    }[""+legalPage];
+    return <div className="modal-scrim" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setLegalPage(null);}}><section className="legal-modal" role="dialog" aria-modal="true" aria-labelledby="legal-heading"><div className="modal-head"><div><span className="section-kicker">GROEarnX POLICY CENTER</span><h2 id="legal-heading">{legalPage}</h2><p>Draft disclosure — review and complete before offering regulated services.</p></div><button className="icon-button" onClick={()=>setLegalPage(null)} aria-label="Close policy"><Icon name="close"/></button></div><div className="legal-content">{content?.slice(1).map((paragraph,i)=><p key={i}>{paragraph}</p>)}</div><button className="btn btn-outline" onClick={()=>setLegalPage(null)}>Close</button></section></div>;
   }
 
   function renderAuth(isSignup) {
