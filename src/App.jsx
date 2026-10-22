@@ -117,6 +117,7 @@ function App() {
   const [authUser, setAuthUser] = useState(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [walletBalances, setWalletBalances] = useState({});
+  const [portfolioHistory, setPortfolioHistory] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [investmentPlans, setInvestmentPlans] = useState([]);
   const [mfaFactors, setMfaFactors] = useState([]);
@@ -324,6 +325,7 @@ function App() {
     if (error) { notify(error.message); return; }
     setAuthUser(null);
     setWalletBalances({});
+    setPortfolioHistory([]);
     setNotifications([]);
     setTransactions([]);
     setView("home");
@@ -348,10 +350,11 @@ function App() {
     if (!supabaseConfigured || !authUser) return;
     let active = true;
     async function loadAccountData() {
-      const [p, tx, balance, notif, plans, factors] = await Promise.all([
+      const [p, tx, balance, history, notif, plans, factors] = await Promise.all([
         supabase.from("profiles").select("display_name,country,phone,kyc_status").eq("id", authUser.id).maybeSingle(),
         supabase.from("transaction_requests").select("id,request_type,asset_code,amount,status,created_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(100),
         supabase.rpc("get_my_asset_balances"),
+        supabase.from("portfolio_snapshots").select("id,total_value_usd,captured_at,source").eq("user_id",authUser.id).order("captured_at",{ascending:false}).limit(90),
         supabase.from("notifications").select("id,category,title,body,read_at,created_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(50),
         supabase.from("investment_plans").select("id,name,description,asset_code,minimum_amount,maximum_amount,term_days,target_return_apr,return_type,fees_disclosure,risk_disclosure,terms_url").eq("status","active").eq("legally_reviewed",true),
         supabase.auth.mfa.listFactors(),
@@ -360,6 +363,7 @@ function App() {
       if (p.data) setProfile(prev => ({ ...prev, name: p.data.display_name || prev.name, country: p.data.country || prev.country, phone: p.data.phone || "", kycStatus: p.data.kyc_status || "not_started" }));
       if (tx.data) setTransactions(tx.data.map(t => ({ id:t.id, type:t.request_type.replaceAll("_"," "), asset:t.asset_code, amount:Number(t.amount), unit:t.asset_code, date:new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"2-digit",year:"numeric"}), status:t.status })));
       if (balance.data) setWalletBalances(Object.fromEntries(balance.data.map(b => [b.asset_code, Number(b.balance)])));
+      if (history.data) setPortfolioHistory(history.data.slice().reverse());
       if (notif.data) setNotifications(notif.data);
       if (plans.data) setInvestmentPlans(plans.data);
       if (factors.data) setMfaFactors([...(factors.data.totp || []), ...(factors.data.phone || [])]);
@@ -428,6 +432,7 @@ function App() {
   }
 
   function MarketTable({ rows }) {
+    if (!Array.isArray(rows) || rows.length === 0) return <div className="empty-state"><Icon name="chart" size={24}/><b>Market prices are unavailable</b><span>The public market feed did not return fresh quotes. No substitute prices or synthetic trend lines are shown.</span></div>;
     return <div className="table-wrap"><table className="market-table">
       <thead><tr><th>Asset</th><th>Price</th><th>24h change</th><th>Market cap</th><th>7d trend</th><th /></tr></thead>
       <tbody>{rows.map(coin => <tr key={coin.id}>
@@ -638,7 +643,7 @@ function App() {
           <div className="dashboard-demo-banner"><span><Icon name="info" size={17} /></span><div><b>Your account overview</b><p>Only posted ledger balances are shown here. Market-price changes can increase or decrease the value of your holdings. Deposits, withdrawals and trading require verified service integrations.</p></div><button onClick={() => notify("Real balances should come from a server-side ledger reconciled with trusted wallet/payment providers.")}>How balances work <Icon name="arrowRight" size={13} /></button></div>
           {tab === "Overview" && <>
             <div className="dashboard-metric-grid">
-              <section className="metric-card primary-metric"><div className="metric-label"><span>Portfolio value</span><button className="eye-toggle" aria-label="Toggle sample balance visibility" onClick={() => setShowBalances(v => !v)}><Icon name="eye" size={16} /></button></div><div className="metric-number">{showBalances ? money(portfolioValue) : "••••••••"}</div><div className="metric-foot"><span className={"metric-change " + (dailyChange >= 0 ? "positive" : "negative")}>{dailyChange >= 0 ? "+" : "−"}{money(Math.abs(dailyChange))} ({changeText(dailyChangePct)})</span><span>24h portfolio change</span></div><div className="metric-chart"><Sparkline values={market.find(c => c.id === "bitcoin")?.spark} color="#FFFFFF" width={350} height={77} fill /></div><small className="metric-period">{marketStatus === "live" ? "Calculated from posted units × live prices" : "Portfolio value updates when settled units and current market quotes are available"}</small></section>
+              <section className="metric-card primary-metric"><div className="metric-label"><span>Portfolio value</span><button className="eye-toggle" aria-label="Toggle sample balance visibility" onClick={() => setShowBalances(v => !v)}><Icon name="eye" size={16} /></button></div><div className="metric-number">{showBalances ? money(portfolioValue) : "••••••••"}</div><div className="metric-foot"><span className={"metric-change " + (dailyChange >= 0 ? "positive" : "negative")}>{dailyChange >= 0 ? "+" : "−"}{money(Math.abs(dailyChange))} ({changeText(dailyChangePct)})</span><span>24h portfolio change</span></div><div className="metric-chart">{portfolioHistory.length > 1 ? <Sparkline values={portfolioHistory.map(point=>Number(point.total_value_usd))} color="#FFFFFF" width={350} height={77} fill/> : <span className="chart-note">Portfolio history appears after valuation snapshots are recorded.</span>}</div><small className="metric-period">{marketStatus === "live" ? "Calculated from posted units × live prices" : "Portfolio value updates when settled units and current market quotes are available"}</small></section>
               <section className="metric-card"><div className="metric-card-top"><span className="metric-icon"><Icon name="wallet" /></span><span className="metric-badge">ACCOUNT</span></div><div className="metric-label">Assets tracked</div><div className="metric-number small-number">{portfolioRows.filter(c => c.units > 0).length}</div><p className="metric-caption">Assets with posted balances</p><button className="metric-link" onClick={() => setTab("Portfolio")}>View portfolio <Icon name="arrowRight" size={14} /></button></section>
               <section className="metric-card"><div className="metric-card-top"><span className="metric-icon purple"><Icon name="activity" /></span><span className="metric-badge">SESSION</span></div><div className="metric-label">Activity requests</div><div className="metric-number small-number">{transactions.length}</div><p className="metric-caption">Account activity loaded from your records</p><button className="metric-link" onClick={() => setTab("Activity")}>View activity <Icon name="arrowRight" size={14} /></button></section>
             </div>
