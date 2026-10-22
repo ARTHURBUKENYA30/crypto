@@ -20,6 +20,12 @@ GROEarnX is a React/Vite crypto-market interface with a Supabase-backed account 
 4. Set the same two variables in the production hosting environment and redeploy.
 5. Run `npm install`, `npm run build`, then `npm run dev`.
 
+## U.S. launch checklist
+
+Read [US_LAUNCH_GUIDE.md](./US_LAUNCH_GUIDE.md) for the step-by-step legal, provider, hosting, testing and troubleshooting plan for operating in the United States.
+
+The current Supabase project region is eu-west-2 (UK); approve the production data region before onboarding U.S. customers. State and licensing eligibility must be enforced from trusted server-side/KYC records, not the editable state value in Auth metadata. U.S. ACH/card, custody wallets, mobile-money and exchange execution are not connected, so financial actions remain disabled. A public Vercel deployment also requires the correct Vercel team access to be authorized.
+
 ## Financial controls and go-live requirements
 
 Before any real deposit, withdrawal, buy/sell or yield service is activated:
