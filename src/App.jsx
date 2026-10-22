@@ -99,7 +99,7 @@ function TradingChart({ values = [], color = "#159B71" }) {
   const width = 940, height = 260, top = 12, bottom = 24;
   const data = values.length > 2 ? values : [12,13,12,17,16,20,18,23,21,25,24,29];
   const min = Math.min(...data), max = Math.max(...data), span = max-min || 1;
-  const pts = data.map((v,i)=>({x:8+i*((width-16)/Math.max(1,data.length-1)),y:top+(1-(v-min)/span)*(height-top-bottom)});
+  const pts = data.map((v,i)=>({x:8+i*((width-16)/Math.max(1,data.length-1)),y:top+(1-(v-min)/span)*(height-top-bottom)}));
   const line = pts.map(p=>p.x.toFixed(1)+","+p.y.toFixed(1)).join(" ");
   const area = "M "+pts[0].x+" "+(height-bottom)+" L "+pts.map(p=>p.x+" "+p.y).join(" L ")+" L "+pts[pts.length-1].x+" "+(height-bottom)+" Z";
   return <svg className="trading-chart-svg" viewBox={"0 0 "+width+" "+height} preserveAspectRatio="none" role="img" aria-label="Seven-day crypto price trend">
