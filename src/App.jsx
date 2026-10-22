@@ -197,6 +197,7 @@ function App() {
     setProfile(p => ({ ...p, country: "", nationalId: "", drivingPermit: "" }));
     notify("Preview only: nothing was sent or stored. Connect authentication and a secure identity-verification provider before collecting real details.");
   }
+  function startDemo() { notify("Please create an account or sign in."); openAuth("signin"); }
   function changeRequest(key, value) { setRequest(r => ({ ...r, [key]: value })); }
   function openRequest(direction, asset = "usdt") {
     setRequest({ direction, asset, amount: "", network: asset === "bitcoin" ? "Bitcoin network" : asset === "ethereum" ? "Ethereum mainnet" : "TRC20", country: profile.country || "United States", provider: "MTN Mobile Money", phone: "", destination: "", acknowledged: false });
@@ -313,7 +314,7 @@ function App() {
         <section className="learn-section" id="learn">
           <div className="learn-inner"><div><span className="section-kicker">LEARN BEFORE YOU MOVE</span><h2>Better information.<br /><span>More thoughtful decisions.</span></h2><p>Understand wallets, blockchain networks, volatility, and transaction fees before making a move.</p><button className="btn btn-dark" onClick={() => notify("Learning center is planned for the next build.")}>Explore learning center <Icon name="arrowRight" size={15} /></button></div><div className="learn-list"><div><span>01</span><div><b>Start with the basics</b><small>Crypto, wallets, and the blockchain in plain English.</small></div><Icon name="arrowRight" /></div><div><span>02</span><div><b>Understand risk</b><small>Volatility, fees, scams, and common warning signs.</small></div><Icon name="arrowRight" /></div><div><span>03</span><div><b>Know the network</b><small>Choose the right network and verify every address.</small></div><Icon name="arrowRight" /></div></div></div>
         </section>
-        <section className="cta-section"><div><span className="section-kicker">YOUR NEXT STEP</span><h2>Make the market<br />easier to understand.</h2><p>Start with a transparent demo, then connect a verified account when the platform is ready.</p></div><div className="cta-actions"><button className="btn btn-primary btn-lg" onClick={() => openAuth("signup")}>Get started <Icon name="arrowRight" size={15} /></button><button className="btn btn-quiet btn-lg" onClick={startDemo}>View demo dashboard</button><small>No real funds are accepted in this preview.</small></div></section>
+        <section className="cta-section"><div><span className="section-kicker">YOUR NEXT STEP</span><h2>Make the market<br />easier to understand.</h2><p>Start with a transparent demo, then connect a verified account when the platform is ready.</p></div><div className="cta-actions"><button className="btn btn-primary btn-lg" onClick={() => openAuth("signup")}>Get started <Icon name="arrowRight" size={15} /></button><button className="btn btn-quiet btn-lg" onClick={() => openAuth("signin")}>Sign in to your account</button><small>Deposits and withdrawals require verified provider integrations.</small></div></section>
       </main>{renderFooter()}</>;
   }
 
@@ -327,7 +328,7 @@ function App() {
       </div>
       <div className="auth-main"><div className="auth-mobile-brand"><Brand onClick={() => setView("home")} /></div><button className="auth-back" onClick={() => setView("home")}>← Back to home</button>
         <div className="auth-form-wrap"><div className="auth-form-heading"><span className="section-kicker">{isSignup ? "CREATE YOUR PROFILE" : "WELCOME BACK"}</span><h2>{isSignup ? "Create your account" : "Sign in to GROEarnX"}</h2><p>{isSignup ? "A few details to set up your profile." : "Your market view is just a step away."}</p></div>
-          <div className="preview-warning"><Icon name="info" size={17} /><span><b>Preview only.</b> Do not enter real passwords or identity details. This form is not connected to authentication or secure document verification.</span></div>
+          {!supabaseConfigured && <div className="preview-warning"><Icon name="info" size={17} /><span><b>Account setup required.</b> Authentication is not configured on this deployment yet.</span></div>}
           <form onSubmit={isSignup ? signUp : signIn} className="auth-form">
             {isSignup && <>
               <label>Full name<input name="fullName" autoComplete="name" placeholder="Your full name" required /></label>
@@ -335,17 +336,13 @@ function App() {
             </>}
             <label>Email address<input type="email" name="email" autoComplete="email" placeholder="you@example.com" required onChange={e => !isSignup && setProfile(p => ({ ...p, email: e.target.value }))} /></label>
             <label>Password<div className="password-wrap"><input type="password" name="password" autoComplete={isSignup ? "new-password" : "current-password"} minLength={8} placeholder={isSignup ? "At least 8 characters" : "Enter password"} required /><Icon name="lock" size={16} /></div></label>
-            {isSignup && <div className="identity-preview"><div className="identity-preview-heading"><span><Icon name="shield" size={16} /></span><div><b>Identity verification</b><small>National ID and driving permit fields</small></div><span className="badge-muted">Preview</span></div>
-              <label>National ID number <input name="nationalId" autoComplete="off" placeholder="For secure KYC setup only" defaultValue="" /></label>
-              <label>Driving permit number <input name="drivingPermit" autoComplete="off" placeholder="For secure KYC setup only" defaultValue="" /></label>
-              <p>These fields are preview-only. Do not use real ID numbers: secure KYC and document retention are not configured.</p>
-            </div>}
+            {isSignup && <div className="identity-preview"><div className="identity-preview-heading"><span><Icon name="shield" size={16} /></span><div><b>Identity verification</b><small>Verification after account creation</small></div><span className="badge-muted">Required later</span></div><p>For your protection, identity documents and ID numbers are collected only through an approved secure verification provider. Do not enter them into this form.</p></div>}
             {!isSignup && <div className="auth-options"><label className="check-row"><input type="checkbox" /> <span>Remember this device</span></label><button type="button" className="text-link" onClick={() => notify("Password reset becomes available after secure authentication is connected.")}>Forgot password?</button></div>}
             {isSignup && <label className="check-row terms-check"><input type="checkbox" required /> <span>I have read the privacy and terms notice for this preview.</span></label>}
-            <button className="btn btn-primary auth-submit" type="submit">{isSignup ? "Preview account setup" : "Continue to demo dashboard"} <Icon name="arrowRight" size={16} /></button>
+            <button className="btn btn-primary auth-submit" type="submit" disabled={authBusy || !supabaseConfigured}>{authBusy ? "Please wait…" : isSignup ? "Create account" : "Sign in"} <Icon name="arrowRight" size={16} /></button>
           </form>
           <div className="auth-switch">{isSignup ? "Already have a profile?" : "New to GROEarnX?"} <button onClick={() => openAuth(isSignup ? "signin" : "signup")}>{isSignup ? "Sign in" : "Create account"}</button></div>
-          <div className="auth-legal">By continuing, you acknowledge that this is a non-production preview. Real deposits, withdrawals, login sessions, and identity verification are not enabled.</div>
+          <div className="auth-legal">Your account is protected by the configured authentication service. Wallet and payment services become available only after their providers are verified and connected.</div>
         </div>
         <div className="auth-bottom-line"><span>© {new Date().getFullYear()} GROEarnX</span><a href={WHATSAPP_URL} target="_blank" rel="noreferrer">Need help? WhatsApp support <Icon name="external" size={12} /></a></div>
       </div>
@@ -359,7 +356,7 @@ function App() {
     const value = Number(tradeAmount);
     if (!Number.isFinite(value) || value <= 0 || value > 1000000) { notify("Enter a valid demo order amount between $0.01 and $1,000,000."); return; }
     setTransactions(items => [{id:"GX-ORDER-"+String(items.length+1).padStart(3,"0"),type:"Preview "+tradeSide+" order",asset:coin.symbol,amount:value/coin.price,unit:coin.symbol,date:new Date().toLocaleDateString("en-US",{month:"short",day:"2-digit",year:"numeric"}),status:"Preview only"},...items]);
-    notify("Demo order recorded locally. No order was sent and portfolio balances did not change.");
+    notify("Order preview saved to the activity list. Live exchange execution is not configured; no assets were traded.");
     setTab("Activity");
   }
 
@@ -378,7 +375,7 @@ function App() {
         <div className="trade-pair-stat"><small>24H LOW</small><b>{money(low,low<1?4:2)}</b></div>
         <div className="trade-pair-stat"><small>24H VOLUME</small><b>{compactMoney(volume)}</b></div>
       </section>
-      <div className="trade-disclaimer"><Icon name="info" size={15}/><span><b>Trading terminal preview.</b> Quotes may be live, but order entry is not connected to an exchange. Orders here are illustrative records only.</span><span className={"feed-state "+(marketStatus==="live"?"feed-live":"")}><i/>{marketStatus==="live"?"Quotes live":"Sample quotes"}</span></div>
+      <div className="trade-disclaimer"><Icon name="info" size={15}/><span><b>Market information only.</b> Public quotes do not mean GROEarnX is connected to an exchange. Buy/sell execution is unavailable until a trading provider is integrated.</span><span className={"feed-state "+(marketStatus==="live"?"feed-live":"")}><i/>{marketStatus==="live"?"Quotes live":"Feed unavailable"}</span></div>
       <div className="trade-workspace">
         <section className="panel-card trade-chart-panel">
           <div className="trade-panel-title"><div><h2>{coin.name} price chart</h2><p>Public 7-day price sparkline · USD</p></div><span className="chart-range-chip">7D</span></div>
@@ -461,9 +458,9 @@ function App() {
         <div className="amount-input-wrap"><input type="number" min="0.000001" step="any" value={request.amount} onChange={e => changeRequest("amount",e.target.value)} placeholder="0.00" required/><span>{asset.type === "mobile" ? (request.country === "Uganda" ? "UGX" : "USD") : asset.id === "bitcoin" ? "BTC" : asset.id === "ethereum" ? "ETH" : "USDT"}</span></div></label>
         {asset.type === "crypto" ? <label>Network<select value={request.network} onChange={e=>changeRequest("network",e.target.value)}>{(asset.id === "bitcoin" ? ["Bitcoin network"] : asset.id === "ethereum" ? ["Ethereum mainnet"] : ["TRC20","ERC20"]).map(n=><option key={n}>{n}</option>)}</select><small className="field-help">Only choose a real network after wallet infrastructure and the matching deposit/withdrawal address are configured.</small></label> : <><label>Country / region<select value={request.country} onChange={e=>changeRequest("country",e.target.value)}>{COUNTRIES.map(c=><option key={c}>{c}</option>)}</select></label><label>Mobile money provider<select value={request.provider} onChange={e=>changeRequest("provider",e.target.value)}>{["MTN Mobile Money","Airtel Money","M-Pesa","Other provider"].map(p=><option key={p}>{p}</option>)}</select></label><label>Mobile money phone number<input type="tel" value={request.phone} onChange={e=>changeRequest("phone",e.target.value)} placeholder="+256 … / country code" required/><small className="field-help">A payment provider must be connected before this can initiate a payment.</small></label></>}
         {!deposit && asset.type === "crypto" && <label>Destination wallet address<input value={request.destination} onChange={e=>changeRequest("destination",e.target.value)} placeholder="Destination address (not sent in preview)" required/><small className="field-help">Never send to an address until the network and recipient have been independently verified.</small></label>}
-        <div className="request-warning"><Icon name="info" size={17}/><span><b>Preview mode.</b> {deposit ? "No wallet address or mobile money collection number is configured." : "Withdrawals are not connected to a wallet or payout provider."} This creates only a temporary request in your browser session.</span></div>
+        <div className="request-warning"><Icon name="info" size={17}/><span><b>Service unavailable.</b> {deposit ? "A verified custody wallet or mobile-money collection provider is not connected." : "Withdrawals are disabled until a verified custody wallet or payout provider is connected."} Do not send funds to this platform yet.</span></div>
         <label className="check-row request-check"><input type="checkbox" required checked={request.acknowledged} onChange={e=>changeRequest("acknowledged",e.target.checked)}/><span>I understand this preview will not transfer money or crypto.</span></label>
-        <button className="btn btn-primary auth-submit" type="submit">{deposit ? "Record preview deposit request" : "Record preview withdrawal request"} <Icon name="arrowRight" size={15}/></button>
+        <button className="btn btn-primary auth-submit" type="submit" disabled>{deposit ? "Deposits unavailable" : "Withdrawals unavailable"}</button>
       </form>
     </section></div>;
   }
