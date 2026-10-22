@@ -319,11 +319,22 @@ function App() {
   async function removeMfaFactor(factorId) {
     const { error } = await supabase.auth.mfa.unenroll({ factorId });
     if (error) { notify(error.message); return; }
+    setMfaAccessGranted(false);
+    const { error: refreshError } = await supabase.auth.refreshSession();
     const factors = await supabase.auth.mfa.listFactors();
     setMfaFactors([...(factors.data?.totp || []), ...(factors.data?.phone || [])]);
-    setMfaAccessGranted(false);
+    if (refreshError) {
+      await supabase.auth.signOut();
+      setAuthUser(null);
+      setView("home");
+      notify("Authenticator removed. Sign in again to establish a fresh secure session.");
+      return;
+    }
+    const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    const verifiedRemaining = [...(factors.data?.totp || []), ...(factors.data?.phone || [])].some(f=>f.status==="verified");
+    setMfaAccessGranted(assurance?.currentLevel==="aal2" && verifiedRemaining);
     setTab("Security");
-    notify("Authenticator removed. Account information remains locked until two-factor authentication is reconfigured.");
+    notify(verifiedRemaining ? "Authenticator updated. Verify MFA again to access account information." : "Authenticator removed. Set up and verify MFA before accessing account information.");
   }
   async function markNotificationRead(notificationId) {
     const { error } = await supabase.from("notifications").update({ read_at: new Date().toISOString() }).eq("id", notificationId).eq("user_id", authUser.id);
@@ -712,7 +723,7 @@ function App() {
     const nav = [{ label: "Overview", icon: "grid" }, { label: "Wallets", icon: "wallet" }, { label: "Trade", icon: "chart" }, { label: "Portfolio", icon: "wallet" }, { label: "Markets", icon: "chart" }, { label: "Activity", icon: "activity" }, { label: "Investment Plans", icon: "chart" }, { label: "Notifications", icon: "bell" }, { label: "Verification", icon: "shield" }, { label: "Security", icon: "lock" }, { label: "Profile", icon: "user" }, ...(isAdmin ? [{ label: "Admin", icon: "settings" }] : [])];
     return <div className="dashboard-layout">
       <aside className={"sidebar " + (menuOpen ? "sidebar-open" : "")}><div className="sidebar-brand"><Brand onClick={() => setView("home")} /></div><div className="sidebar-caption">WORKSPACE</div><nav className="sidebar-nav">{nav.map(item => <button className={tab === item.label ? "selected" : ""} key={item.label} onClick={() => dashboardNav(item.label)}><Icon name={item.icon} size={18} />{item.label}{item.label === "Verification" && profile.kycStatus !== "verified" && <span className="nav-count">!</span>}{item.label === "Notifications" && notifications.some(n=>!n.read_at) && <span className="nav-count">{notifications.filter(n=>!n.read_at).length}</span>}</button>)}</nav><div className="sidebar-bottom"><div className="support-card"><span className="support-icon"><Icon name="shield" /></span><b>Need a hand?</b><small>Talk to the GROEarnX support team.</small><a href={WHATSAPP_URL} target="_blank" rel="noreferrer">Contact support <Icon name="arrowRight" size={13} /></a></div><button className="sidebar-home" onClick={() => setView("home")}><Icon name="arrowRight" size={15} /> Back to website</button><div className="sidebar-member"><span className="member-avatar">{memberInitials}</span><span><b>{memberName}</b><small>{authUser?.email || "Verified account"}</small></span><button title="Sign out" onClick={signOut}><Icon name="external" size={14}/></button></div></div></aside>
-      <main className="dashboard-main"><header className="dashboard-topbar"><button className="mobile-menu dash-menu" onClick={() => setMenuOpen(v => !v)} aria-label="Toggle dashboard menu"><Icon name="menu" /></button><div className="breadcrumbs">Workspace <span>/</span> <b>{tab}</b></div><div className="dashboard-top-actions"><span className="account-status-chip"><span className="status-dot" /> ACCOUNT ACTIVE</span><button className="icon-button" aria-label="Notifications" onClick={() => setTab("Notifications")}><Icon name="bell" /></button><span className="top-avatar">{memberInitials}</span></div></header>
+      <main className="dashboard-main"><header className="dashboard-topbar"><button className="mobile-menu dash-menu" onClick={() => setMenuOpen(v => !v)} aria-label="Toggle dashboard menu"><Icon name="menu" /></button><div className="breadcrumbs">Workspace <span>/</span> <b>{tab}</b></div><div className="dashboard-top-actions"><span className="account-status-chip"><span className="status-dot" /> {mfaAccessGranted ? "SECURE ACCESS" : "SECURITY SETUP REQUIRED"}</span><button className="icon-button" aria-label="Notifications" onClick={() => setTab("Notifications")}><Icon name="bell" /></button><span className="top-avatar">{memberInitials}</span></div></header>
         <div className="dashboard-content">{!mfaAccessGranted && <div className="dashboard-ledger-notice"><span><Icon name="shield" size={17}/></span><div><b>Verify two-factor authentication</b><p>Account information is hidden until your authenticator is enrolled and verified. Open Security in the sidebar to continue.</p></div></div>}<div className="dashboard-welcome"><div><span className="section-kicker">YOUR WORKSPACE</span><h1>{tab === "Overview" ? `Welcome back, ${memberName}.` : tab}</h1><p>{tab === "Overview" ? "Here is your portfolio, settled activity and current market information." : dashboardDescription(tab)}</p></div><div className="dashboard-welcome-actions"><button className="btn btn-outline" onClick={() => openRequest("withdraw")}> <Icon name="arrowDown" size={15} /> Withdraw</button><button className="btn btn-primary" onClick={() => openRequest("deposit")}> <Icon name="plus" size={15} /> Deposit</button></div></div>
           <div className="dashboard-ledger-notice"><span><Icon name="info" size={17} /></span><div><b>Your account overview</b><p>Only posted ledger balances are shown here. Market-price changes can increase or decrease the value of your holdings. Deposits, withdrawals and trading require verified service integrations.</p></div><button onClick={() => notify("Real balances should come from a server-side ledger reconciled with trusted wallet/payment providers.")}>How balances work <Icon name="arrowRight" size={13} /></button></div>
           {tab === "Overview" && <>
