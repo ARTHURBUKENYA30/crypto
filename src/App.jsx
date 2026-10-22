@@ -205,7 +205,7 @@ function App() {
 
   function notify(text) { setToast(text); }
   function openAuth(which) { setView(which); setMenuOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); }
-  function startDemo() {
+  function requireSignIn() {
     notify("Sign in or create an account to access your personal dashboard.");
     openAuth("signin");
   }
@@ -248,7 +248,7 @@ function App() {
     setAuthBusy(true);
     const { data, error } = await supabase.auth.signUp({
       email, password,
-      options: { data: { display_name: displayName, country } }
+      options: { emailRedirectTo: window.location.origin, data: { display_name: displayName, country } }
     });
     setAuthBusy(false);
     if (error) { notify(error.message); return; }
@@ -706,7 +706,8 @@ function App() {
   }
 
   function ActivityTable({ items }) {
-    return <div className="table-wrap"><table className="market-table activity-table"><thead><tr><th>Activity</th><th>Amount</th><th>Date</th><th>Status</th></tr></thead><tbody>{items.map(item=><tr key={item.id}><td><div className="activity-name"><span className={"activity-badge " + (item.type.toLowerCase().includes("withdraw") ? "activity-out" : item.type.toLowerCase().includes("deposit") ? "activity-in" : "")}>{item.type.toLowerCase().includes("withdraw") ? <Icon name="arrowUp" size={15}/> : item.type.toLowerCase().includes("deposit") ? <Icon name="arrowDown" size={15}/> : <Icon name="activity" size={15}/>}</span><div><b>{item.type}</b><small>{item.id} · {item.asset}</small></div></div></td><td><b>{shortNumber(item.amount,8)} {item.unit}</b></td><td className="muted-cell">{item.date}</td><td><span className={"status-label " + (item.status === "Confirmed" ? "status-ok" : item.status === "Illustrative" ? "status-demo" : "status-pending")}>{item.status}</span></td></tr>)}</tbody></table></div>;
+    if (!Array.isArray(items) || items.length === 0) return <div className="empty-state"><Icon name="activity" size={24}/><b>No transaction activity yet.</b><span>Confirmed payments and requests will appear here when recorded by the connected services.</span></div>;
+    return <div className="table-wrap"><table className="market-table activity-table"><thead><tr><th>Activity</th><th>Amount</th><th>Date</th><th>Status</th></tr></thead><tbody>{items.map(item=><tr key={item.id}><td><div className="activity-name"><span className={"activity-badge " + (item.type.toLowerCase().includes("withdraw") ? "activity-out" : item.type.toLowerCase().includes("deposit") ? "activity-in" : "")}>{item.type.toLowerCase().includes("withdraw") ? <Icon name="arrowUp" size={15}/> : item.type.toLowerCase().includes("deposit") ? <Icon name="arrowDown" size={15}/> : <Icon name="activity" size={15}/>}</span><div><b>{item.type}</b><small>{item.id} · {item.asset}</small></div></div></td><td><b>{shortNumber(item.amount,8)} {item.unit}</b></td><td className="muted-cell">{item.date}</td><td><span className={"status-label " + (["completed","confirmed","posted"].includes(String(item.status).toLowerCase()) ? "status-ok" : "status-pending")}>{item.status}</span></td></tr>)}</tbody></table></div>;
   }
 
   function dashboardDescription(activeTab) {
