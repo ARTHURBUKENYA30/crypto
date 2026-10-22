@@ -120,6 +120,7 @@ function App() {
   const [mfaFactors, setMfaFactors] = useState([]);
   const [mfaSetup, setMfaSetup] = useState(null);
   const [mfaCode, setMfaCode] = useState("");
+  const [mfaLogin, setMfaLogin] = useState(null);
   const [mfaBusy, setMfaBusy] = useState(false);
   const [legalPage, setLegalPage] = useState(null);
   const [tab, setTab] = useState("Overview");
@@ -210,6 +211,17 @@ function App() {
     if (error) { notify(error.message); return; }
     setAuthUser(data.user);
     setProfile(p => ({ ...p, email: data.user.email || "", name: data.user.user_metadata?.display_name || "", country: data.user.user_metadata?.country || "" }));
+    const factors = await supabase.auth.mfa.listFactors();
+    const verifiedTotp = factors.data?.totp?.find(factor => factor.status === "verified");
+    if (verifiedTotp) {
+      const challenge = await supabase.auth.mfa.challenge({ factorId: verifiedTotp.id });
+      if (challenge.error) { notify(challenge.error.message); return; }
+      setMfaLogin({ factorId: verifiedTotp.id, challengeId: challenge.data.id });
+      setMfaCode("");
+      setView("mfaChallenge");
+      notify("Enter the code from your authenticator app.");
+      return;
+    }
     setView("dashboard");
     setTab("Overview");
     notify("You are signed in.");
@@ -239,6 +251,63 @@ function App() {
       setView("signin");
       notify("Account created. Check your email for the verification link before signing in.");
     }
+  }
+  async function verifyMfaLogin(e) {
+    e.preventDefault();
+    if (!mfaLogin) return;
+    setMfaBusy(true);
+    const { error } = await supabase.auth.mfa.verify({ factorId: mfaLogin.factorId, challengeId: mfaLogin.challengeId, code: mfaCode.trim() });
+    setMfaBusy(false);
+    if (error) { notify("Authenticator verification failed. Check the code and try again."); return; }
+    setMfaLogin(null);
+    setMfaCode("");
+    setView("dashboard");
+    setTab("Overview");
+    notify("Two-factor verification complete.");
+  }
+  async function beginMfaEnrollment() {
+    setMfaBusy(true);
+    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "GROEarnX authenticator" });
+    setMfaBusy(false);
+    if (error) { notify(error.message); return; }
+    setMfaSetup({ id: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret, uri: data.totp.uri });
+    setMfaCode("");
+    notify("Scan the QR code with an authenticator app, then verify a code.");
+  }
+  async function verifyMfaEnrollment(e) {
+    e.preventDefault();
+    if (!mfaSetup) return;
+    setMfaBusy(true);
+    const challenge = await supabase.auth.mfa.challenge({ factorId: mfaSetup.id });
+    if (challenge.error) { setMfaBusy(false); notify(challenge.error.message); return; }
+    const { error } = await supabase.auth.mfa.verify({ factorId: mfaSetup.id, challengeId: challenge.data.id, code: mfaCode.trim() });
+    setMfaBusy(false);
+    if (error) { notify("That code could not be verified. Check your device clock and try again."); return; }
+    setMfaSetup(null); setMfaCode("");
+    const factors = await supabase.auth.mfa.listFactors();
+    setMfaFactors([...(factors.data?.totp || []), ...(factors.data?.phone || [])]);
+    notify("Two-factor authentication has been enabled for your account.");
+  }
+  async function removeMfaFactor(factorId) {
+    const { error } = await supabase.auth.mfa.unenroll({ factorId });
+    if (error) { notify(error.message); return; }
+    const factors = await supabase.auth.mfa.listFactors();
+    setMfaFactors([...(factors.data?.totp || []), ...(factors.data?.phone || [])]);
+    notify("Authenticator factor removed.");
+  }
+  async function markNotificationRead(notificationId) {
+    const { error } = await supabase.from("notifications").update({ read_at: new Date().toISOString() }).eq("id", notificationId).eq("user_id", authUser.id);
+    if (error) { notify(error.message); return; }
+    setNotifications(items => items.map(item => item.id === notificationId ? { ...item, read_at: new Date().toISOString() } : item));
+  }
+  async function saveProfile(e) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const updates = { display_name: form.elements.displayName.value.trim(), country: form.elements.country.value, phone: form.elements.phone.value.trim() };
+    const { error } = await supabase.from("profiles").update(updates).eq("id", authUser.id);
+    if (error) { notify(error.message); return; }
+    setProfile(p => ({ ...p, name: updates.display_name, country: updates.country, phone: updates.phone }));
+    notify("Profile updated.");
   }
   async function resetPassword() {
     const email = profile.email.trim();
@@ -438,12 +507,7 @@ function App() {
 
   function recordTradePreview(e) {
     e.preventDefault();
-    const coin = market.find(c => c.id === tradePair) || market[0];
-    const value = Number(tradeAmount);
-    if (!Number.isFinite(value) || value <= 0 || value > 1000000) { notify("Enter a valid order amount between $0.01 and $1,000,000."); return; }
-    setTransactions(items => [{id:"GX-ORDER-"+String(items.length+1).padStart(3,"0"),type:"Preview "+tradeSide+" order",asset:coin.symbol,amount:value/coin.price,unit:coin.symbol,date:new Date().toLocaleDateString("en-US",{month:"short",day:"2-digit",year:"numeric"}),status:"Preview only"},...items]);
-    notify("The exchange execution provider is not connected. No order was sent and no assets were traded.");
-    setTab("Activity");
+    notify("Live exchange execution is not connected. No order was sent or asset balance changed.");
   }
 
   function renderTrade() {
