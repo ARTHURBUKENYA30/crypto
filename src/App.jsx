@@ -20,6 +20,7 @@ const ASSET_OPTIONS = [
 ];
 
 const COUNTRIES = ["United States", "Uganda", "United Kingdom", "Kenya", "Nigeria", "Ghana", "Tanzania", "Rwanda", "South Africa", "Canada", "India", "Other"];
+const US_STATES = ["Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","District of Columbia","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts","Michigan","Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada","New Hampshire","New Jersey","New Mexico","New York","North Carolina","North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania","Rhode Island","South Carolina","South Dakota","Tennessee","Texas","Utah","Vermont","Virginia","Washington","West Virginia","Wisconsin","Wyoming"];
 
 function money(value, digits = 2) {
   if (!Number.isFinite(value)) return "—";
@@ -144,7 +145,7 @@ function App() {
   const [watchlist, setWatchlist] = useState(["bitcoin", "ethereum", "solana"]);
   const [transactions, setTransactions] = useState([]);
   const [request, setRequest] = useState({ direction: "deposit", asset: "usdt", amount: "", network: "TRC20", country: "United States", provider: "MTN Mobile Money", phone: "", destination: "", acknowledged: false });
-  const [profile, setProfile] = useState({ name: "", email: "", country: "", phone: "", kycStatus: "not_started" });
+  const [profile, setProfile] = useState({ name: "", email: "", country: "", stateRegion: "", phone: "", kycStatus: "not_started" });
 
   useEffect(() => {
     let alive = true;
@@ -221,7 +222,7 @@ function App() {
     setAuthBusy(false);
     if (error) { notify(error.message); return; }
     setAuthUser(data.user);
-    setProfile(p => ({ ...p, email: data.user.email || "", name: data.user.user_metadata?.display_name || "", country: data.user.user_metadata?.country || "" }));
+    setProfile(p => ({ ...p, email: data.user.email || "", name: data.user.user_metadata?.display_name || "", country: data.user.user_metadata?.country || "", stateRegion: data.user.user_metadata?.state_region || "" }));
     const factors = await supabase.auth.mfa.listFactors();
     const verifiedTotp = factors.data?.totp?.find(factor => factor.status === "verified");
     if (verifiedTotp) {
@@ -245,14 +246,15 @@ function App() {
     const password = form.elements.password.value;
     const displayName = form.elements.fullName.value.trim();
     const country = form.elements.country.value;
+    const stateRegion = country === "United States" ? (form.elements.stateRegion?.value || "") : "";
     setAuthBusy(true);
     const { data, error } = await supabase.auth.signUp({
       email, password,
-      options: { emailRedirectTo: window.location.origin, data: { display_name: displayName, country } }
+      options: { emailRedirectTo: window.location.origin, data: { display_name: displayName, country, state_region: stateRegion } }
     });
     setAuthBusy(false);
     if (error) { notify(error.message); return; }
-    setProfile(p => ({ ...p, name: displayName, email, country }));
+    setProfile(p => ({ ...p, name: displayName, email, country, stateRegion }));
     if (data.session && data.user) {
       setAuthUser(data.user);
       setView("dashboard");
@@ -315,9 +317,12 @@ function App() {
     e.preventDefault();
     const form = e.currentTarget;
     const updates = { display_name: form.elements.displayName.value.trim(), country: form.elements.country.value, phone: form.elements.phone.value.trim() };
+    const stateRegion = updates.country === "United States" ? (form.elements.stateRegion?.value || "") : "";
     const { error } = await supabase.from("profiles").update(updates).eq("id", authUser.id);
     if (error) { notify(error.message); return; }
-    setProfile(p => ({ ...p, name: updates.display_name, country: updates.country, phone: updates.phone }));
+    const { error: metadataError } = await supabase.auth.updateUser({ data: { display_name: updates.display_name, country: updates.country, state_region: stateRegion } });
+    if (metadataError) { notify("Profile saved, but the U.S. state/region did not sync. Please retry."); return; }
+    setProfile(p => ({ ...p, name: updates.display_name, country: updates.country, stateRegion, phone: updates.phone }));
     notify("Profile updated.");
   }
   async function resetPassword() {
@@ -568,7 +573,8 @@ function App() {
           <form onSubmit={isSignup ? signUp : signIn} className="auth-form">
             {isSignup && <>
               <label>Full name<input name="fullName" autoComplete="name" placeholder="Your full name" required /></label>
-              <label>Country / region<select name="country" value={profile.country} onChange={e => setProfile(p => ({ ...p, country: e.target.value }))} required><option value="">Choose your country</option>{COUNTRIES.map(country => <option key={country}>{country}</option>)}</select></label>
+              <label>Country / region<select name="country" value={profile.country} onChange={e => setProfile(p => ({ ...p, country: e.target.value, stateRegion: e.target.value === "United States" ? p.stateRegion : "" }))} required><option value="">Choose your country</option>{COUNTRIES.map(country => <option key={country}>{country}</option>)}</select></label>
+              {profile.country === "United States" && <label>State / territory<select name="stateRegion" value={profile.stateRegion} onChange={e=>setProfile(p=>({...p,stateRegion:e.target.value}))} required><option value="">Choose your state</option>{US_STATES.map(state=><option key={state}>{state}</option>)}</select><small className="field-help">State eligibility must be checked by the service provider and compliance system.</small></label>}
             </>}
             <label>Email address<input type="email" name="email" autoComplete="email" placeholder="you@example.com" required onChange={e => !isSignup && setProfile(p => ({ ...p, email: e.target.value }))} /></label>
             <label>Password<div className="password-wrap"><input type="password" name="password" autoComplete={isSignup ? "new-password" : "current-password"} minLength={8} placeholder={isSignup ? "At least 8 characters" : "Enter password"} required /><Icon name="lock" size={16} /></div></label>
@@ -679,7 +685,7 @@ function App() {
             <div className="activity-note"><Icon name="info" size={16}/> If you lose your authenticator, account recovery must verify your identity. Never share one-time codes or recovery phrases with support.</div>
           </section>}
           {tab === "Verification" && <section className="panel-card route-panel verification-page"><div className="panel-heading"><div><h2>Identity verification</h2><p>Secure verification must be completed through an approved KYC provider when required.</p></div><span className={"status-label "+(profile.kycStatus==="verified"?"status-ok":"status-pending")}><i/>{profile.kycStatus==="verified"?"Verified":profile.kycStatus==="pending"?"In review":"Not verified"}</span></div><div className="verification-steps"><div className="verification-step"><span>01</span><div><b>Country / region</b><p>{profile.country || "Add your country in profile settings."}</p></div><span className="status-label status-ok">{profile.country?"Provided":"Required"}</span></div><div className="verification-step"><span>02</span><div><b>National ID or driving permit</b><p>Submit documents only through the secure identity provider when that integration is available. Do not send ID images over chat.</p></div><span className="status-label status-pending">Provider required</span></div><div className="verification-step"><span>03</span><div><b>Review and approval</b><p>Account limits and regulated features depend on the verified result.</p></div><span className={"status-label "+(profile.kycStatus==="verified"?"status-ok":"status-pending")}>{profile.kycStatus.replaceAll("_"," ")}</span></div></div><button className="btn btn-outline" onClick={() => setTab("Profile")}>Review profile <Icon name="arrowRight" size={14}/></button></section>}
-          {tab === "Profile" && <section className="panel-card route-panel profile-page"><div className="panel-heading"><div><h2>Profile &amp; preferences</h2><p>Update your contact and region information.</p></div><span className="status-label status-ok">Authenticated</span></div><form className="profile-edit-form" onSubmit={saveProfile}><label>Display name<input name="displayName" value={profile.name} onChange={e=>setProfile(p=>({...p,name:e.target.value}))} required maxLength={100}/></label><label>Email address<input value={profile.email} readOnly disabled/></label><label>Country / region<select name="country" value={profile.country} onChange={e=>setProfile(p=>({...p,country:e.target.value}))} required><option value="">Choose your country</option>{COUNTRIES.map(country=><option key={country}>{country}</option>)}</select></label><label>Phone number<input name="phone" value={profile.phone||""} onChange={e=>setProfile(p=>({...p,phone:e.target.value}))} autoComplete="tel" maxLength={40} placeholder="+1…"/></label><button className="btn btn-primary" type="submit">Save profile <Icon name="check" size={15}/></button></form><div className="profile-grid"><div className="profile-field"><span>Identity verification</span><b>{profile.kycStatus==="verified"?"Verified":"Not verified"}</b></div><div className="profile-field"><span>Account status</span><b>Authenticated</b></div></div><div className="activity-note"><Icon name="shield" size={16}/> National ID and driving-permit details belong in the secure KYC provider flow, not ordinary profile fields.</div></section>}
+          {tab === "Profile" && <section className="panel-card route-panel profile-page"><div className="panel-heading"><div><h2>Profile &amp; preferences</h2><p>Update your contact and region information.</p></div><span className="status-label status-ok">Authenticated</span></div><form className="profile-edit-form" onSubmit={saveProfile}><label>Display name<input name="displayName" value={profile.name} onChange={e=>setProfile(p=>({...p,name:e.target.value}))} required maxLength={100}/></label><label>Email address<input value={profile.email} readOnly disabled/></label><label>Country / region<select name="country" value={profile.country} onChange={e=>setProfile(p=>({...p,country:e.target.value,stateRegion:e.target.value==="United States"?p.stateRegion:""}))} required><option value="">Choose your country</option>{COUNTRIES.map(country=><option key={country}>{country}</option>)}</select></label>{profile.country==="United States" && <label>State / territory<select name="stateRegion" value={profile.stateRegion||""} onChange={e=>setProfile(p=>({...p,stateRegion:e.target.value}))} required><option value="">Choose your state</option>{US_STATES.map(state=><option key={state}>{state}</option>)}</select></label>}<label>Phone number<input name="phone" value={profile.phone||""} onChange={e=>setProfile(p=>({...p,phone:e.target.value}))} autoComplete="tel" maxLength={40} placeholder="+1…"/></label><button className="btn btn-primary" type="submit">Save profile <Icon name="check" size={15}/></button></form><div className="profile-grid"><div className="profile-field"><span>Identity verification</span><b>{profile.kycStatus==="verified"?"Verified":"Not verified"}</b></div><div className="profile-field"><span>Account status</span><b>Authenticated</b></div></div><div className="activity-note"><Icon name="shield" size={16}/> National ID and driving-permit details belong in the secure KYC provider flow, not ordinary profile fields.</div></section>}
           {tab === "Admin" && isAdmin && <section className="panel-card route-panel admin-page"><div className="panel-heading"><div><h2>Administration</h2><p>Read-only operational view. Use server-side admin functions for approvals and provider actions.</p></div><span className="status-label status-ok">Restricted access</span></div><div className="admin-summary-grid"><div><small>Registered profiles</small><b>{adminUserCount===null?"—":adminUserCount}</b></div><div><small>Requests listed</small><b>{adminRequests.length}</b></div><div><small>Needs review</small><b>{adminRequests.filter(x=>["submitted","under_review","awaiting_payment"].includes(x.status)).length}</b></div></div><div className="table-wrap"><table className="market-table"><thead><tr><th>Request ID</th><th>User</th><th>Type</th><th>Asset</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody>{adminRequests.map(r=><tr key={r.id}><td>{r.id.slice(0,8)}</td><td>{r.user_id.slice(0,8)}…</td><td>{r.request_type.replaceAll("_"," ")}</td><td>{r.asset_code}</td><td>{shortNumber(Number(r.amount),8)}</td><td><span className="status-label status-pending">{r.status.replaceAll("_"," ")}</span></td><td>{new Date(r.created_at).toLocaleDateString("en-US")}</td></tr>)}</tbody></table>{adminRequests.length===0 && <div className="empty-state"><b>No transaction requests found.</b></div>}</div><div className="activity-note"><Icon name="shield" size={16}/> Admin role must be granted by a trusted server/admin operator in Supabase app metadata. Never set admin access from a public signup form or user-editable metadata.</div></section>}
           <div className="dashboard-disclaimer">GROEarnX financial services become available only after the relevant custody, exchange and payment providers are configured.</div>
         </div>
