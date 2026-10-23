@@ -471,7 +471,7 @@ function App() {
   async function saveProfile(e) {
     e.preventDefault();
     const form = e.currentTarget;
-    const updates = { display_name: form.elements.displayName.value.trim(), country: form.elements.country.value, phone: form.elements.phone.value.trim() };
+    const updates = { display_name: form.elements.displayName.value.trim(), country: form.elements.country.value, state_region: form.elements.country.value === "United States" ? (form.elements.stateRegion?.value || "") : "", phone: form.elements.phone.value.trim() };
     const stateRegion = updates.country === "United States" ? (form.elements.stateRegion?.value || "") : "";
     const { error } = await supabase.from("profiles").update(updates).eq("id", authUser.id);
     if (error) { notify(error.message); return; }
@@ -601,7 +601,7 @@ function App() {
     let active = true;
     async function loadAccountData() {
       const [p, tx, balance, walletResult, history, notif, plans, factors] = await Promise.all([
-        supabase.from("profiles").select("display_name,country,phone,kyc_status").eq("id", authUser.id).maybeSingle(),
+        supabase.from("profiles").select("display_name,country,state_region,phone,kyc_status").eq("id", authUser.id).maybeSingle(),
         supabase.from("transaction_requests").select("id,request_type,asset_code,amount,status,created_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(100),
         supabase.rpc("get_my_asset_balances"),
         supabase.from("wallets").select("id,asset_code,network,deposit_address,provider_name,address_status,created_at").eq("user_id",authUser.id).order("created_at",{ascending:false}).limit(50),
