@@ -689,18 +689,29 @@ function App() {
       setAuthUser(user);
       setProfile(p => ({ ...p, email: user.email || "", name: user.user_metadata?.display_name || "", country: user.user_metadata?.country || "", stateRegion: user.user_metadata?.state_region || "" }));
       window.setTimeout(async () => {
-        const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-        if (!active) return;
-        if (assurance?.currentLevel === "aal2") {
-          setMfaAccessGranted(true);
-          setView("dashboard");
-          setTab("Overview");
-        } else {
+        try {
+          const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+          if (!active) return;
+          if (assuranceError) throw assuranceError;
+          if (assurance?.currentLevel === "aal2") {
+            setMfaAccessGranted(true);
+            setView("dashboard");
+            setTab("Overview");
+          } else {
+            setMfaAccessGranted(false);
+            const factors = await supabase.auth.mfa.listFactors();
+            if (!active) return;
+            if (factors.error) throw factors.error;
+            setMfaFactors([...(factors.data?.totp || []), ...(factors.data?.phone || [])]);
+            setView("dashboard");
+            setTab("Security");
+          }
+        } catch (error) {
+          if (!active) return;
           setMfaAccessGranted(false);
-          const factors = await supabase.auth.mfa.listFactors();
-          if (active) setMfaFactors([...(factors.data?.totp || []), ...(factors.data?.phone || [])]);
           setView("dashboard");
           setTab("Security");
+          notify(authErrorMessage(error, "The account security status could not be checked. Reopen Security and retry."));
         }
       }, 0);
     });
@@ -724,12 +735,20 @@ function App() {
       }
       // Defer Auth API calls out of onAuthStateChange to avoid session-lock contention.
       window.setTimeout(async () => {
-        const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-        if (!active) return;
-        const allowed = assurance?.currentLevel === "aal2";
-        setMfaAccessGranted(allowed);
-        if (!allowed && event !== "SIGNED_IN") {
+        try {
+          const { data: assurance, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+          if (!active) return;
+          if (error) throw error;
+          const allowed = assurance?.currentLevel === "aal2";
+          setMfaAccessGranted(allowed);
+          if (!allowed && event !== "SIGNED_IN") {
+            setTab("Security");
+          }
+        } catch (error) {
+          if (!active) return;
+          setMfaAccessGranted(false);
           setTab("Security");
+          notify(authErrorMessage(error, "The security level could not be checked. Refresh Security before opening private account data."));
         }
       }, 0);
     });
