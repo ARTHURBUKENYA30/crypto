@@ -12,13 +12,6 @@ const ASSET_META = [
   { id: "ripple", symbol: "XRP", name: "XRP", mark: "✕", color: "#8292A6" },
 ];
 
-const ASSET_OPTIONS = [
-  { id: "usdt", label: "USDT (Tether)", mark: "₮", color: "#26A17B", type: "crypto" },
-  { id: "bitcoin", label: "Bitcoin (BTC)", mark: "₿", color: "#F7931A", type: "crypto" },
-  { id: "ethereum", label: "Ethereum (ETH)", mark: "Ξ", color: "#6877DE", type: "crypto" },
-  { id: "mobile", label: "Mobile Money", mark: "▣", color: "#1FA97A", type: "mobile" },
-];
-
 const COUNTRIES = ["United States", "Uganda", "United Kingdom", "Kenya", "Nigeria", "Ghana", "Tanzania", "Rwanda", "South Africa", "Canada", "India", "Other"];
 const US_STATES = ["Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","District of Columbia","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts","Michigan","Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada","New Hampshire","New Jersey","New Mexico","New York","North Carolina","North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania","Rhode Island","South Carolina","South Dakota","Tennessee","Texas","Utah","Vermont","Virginia","Washington","West Virginia","Wisconsin","Wyoming"];
 
@@ -160,9 +153,6 @@ function App() {
   const [marketStatus, setMarketStatus] = useState("unavailable");
   const [lastUpdated, setLastUpdated] = useState(null);
   const [tradePair, setTradePair] = useState("bitcoin");
-  const [tradeSide, setTradeSide] = useState("buy");
-  const [tradeAmount, setTradeAmount] = useState("250");
-  const [tradeOrderType, setTradeOrderType] = useState("Market");
   const [showBalances, setShowBalances] = useState(true);
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState("");
@@ -177,7 +167,6 @@ function App() {
     }
   });
   const [transactions, setTransactions] = useState([]);
-  const [request, setRequest] = useState({ direction: "deposit", asset: "usdt", amount: "", network: "trc20", country: "United States", provider: "U.S. bank transfer (ACH)", phone: "", destination: "", acknowledged: false });
   const [profile, setProfile] = useState({ name: "", email: "", country: "", stateRegion: "", phone: "", kycStatus: "not_started" });
 
   useEffect(() => {
@@ -648,19 +637,11 @@ function App() {
     return () => { active = false; };
   }, [authUser, mfaAccessGranted, isAdmin, tab]);
 
-  function changeRequest(key, value) { setRequest(r => ({ ...r, [key]: value })); }
-  function openRequest(direction, asset = "usdt") {
-    const country = profile.country || "United States";
-    setRequest({ direction, asset, amount: "", network: asset === "bitcoin" ? "bitcoin" : asset === "ethereum" ? "ethereum" : "trc20", country, provider: country === "United States" ? "U.S. bank transfer (ACH)" : "MTN Mobile Money", phone: "", destination: "", acknowledged: false });
-    setModal(direction);
-  }
-  function submitRequest(e) {
-    e.preventDefault();
-    setModal(null);
-    notify("Deposits and withdrawals are not enabled until the custody and payment providers complete integration and verification.");
+  function openRequest(direction) {
+    setModal(direction === "withdraw" ? "withdraw" : "deposit");
   }
 
-  function dashboardNav(nextTab) {
+    function dashboardNav(nextTab) {
     if (!mfaAccessGranted && nextTab !== "Security") {
       setTab("Security");
       notify("Set up and verify an authenticator before accessing private account information.");
@@ -878,11 +859,6 @@ function App() {
   }
 
 
-  function notifyTradeUnavailable(e) {
-    e.preventDefault();
-    notify("Live exchange execution is not connected. No order was sent or asset balance changed.");
-  }
-
   function renderTrade() {
     if (!market.length) return <section className="panel-card route-panel"><div className="panel-heading"><div><h2>Market data unavailable</h2><p>Live public quotes could not be loaded. Trading remains unavailable until market data and an execution provider are configured.</p></div></div></section>;
     const coin = market.find(c=>c.id===tradePair) || market[0];
@@ -908,19 +884,13 @@ function App() {
           <div className="trade-chart-legend"><span><i style={{background:coin.change>=0?"#17996C":"#D65E70"}}/>{coin.symbol}/USD trend</span><span>{marketStatus==="live"?"CoinGecko market feed":"Market data unavailable"}</span></div>
         </section>
         <section className="panel-card trade-order-panel">
-          <div className="panel-heading"><div><h2>Place an order</h2><p>Order entry</p></div><span className="metric-badge">UNAVAILABLE</span></div>
-          <div className="trade-side-tabs"><button className={tradeSide==="buy"?"side-buy active":""} onClick={()=>setTradeSide("buy")}>Buy {coin.symbol}</button><button className={tradeSide==="sell"?"side-sell active":""} onClick={()=>setTradeSide("sell")}>Sell {coin.symbol}</button></div>
-          <div className="trade-type-tabs">{["Market","Limit"].map(type=><button type="button" key={type} className={tradeOrderType===type?"active":""} onClick={()=>setTradeOrderType(type)}>{type}</button>)}</div>
-          {tradeOrderType==="Limit" && <div className="trade-limit-note"><Icon name="info" size={13}/> Limit execution is not connected.</div>}
-          <form className="trade-order-form" onSubmit={notifyTradeUnavailable}>
-            <label>Order value<div className="amount-input-wrap"><input type="number" min="0.01" max="1000000" step="0.01" value={tradeAmount} onChange={e=>setTradeAmount(e.target.value)} required/><span>USD</span></div></label>
-            <div className="quick-amounts">{["50","100","250","500"].map(v=><button type="button" className={tradeAmount===v?"selected":""} key={v} onClick={()=>setTradeAmount(v)}>{"$"}{v}</button>)}</div>
-            <div className="order-estimate"><span>Estimated {tradeSide==="buy"?"receive":"sell"} amount</span><b>{shortNumber(qty,8)} {coin.symbol}</b></div>
-            <div className="order-estimate"><span>Indicative price</span><b>{priceText}</b></div>
-            <div className="order-estimate"><span>Trading fee</span><b>Not calculated</b></div>
-            <button className={"btn auth-submit "+(tradeSide==="buy"?"btn-primary":"trade-sell-button")} type="submit" disabled>Trading unavailable <Icon name="lock" size={15}/></button>
-            <p className="order-footnote">No order is transmitted, no assets are bought or sold, and balances remain unchanged.</p>
-          </form>
+          <div className="panel-heading"><div><h2>Trade execution</h2><p>Live order placement is not enabled on this platform yet.</p></div><span className="metric-badge">NOT CONNECTED</span></div>
+          <div className="service-disabled-panel">
+            <span className="service-disabled-icon"><Icon name="lock" size={22}/></span>
+            <div><span className="service-state-badge">QUOTES ONLY</span><h3>{coin.symbol}/USD is view-only</h3><p>These prices come from public market data. GROEarnX has no connected exchange account to accept orders, calculate actual execution fees, reserve funds, or confirm a fill.</p></div>
+          </div>
+          <div className="service-readiness-list"><div><Icon name="check-circle" size={16}/><span>Public market quote and price history</span></div><div><Icon name="lock" size={16}/><span>Order submission and settlement not available</span></div><div><Icon name="lock" size={16}/><span>Balances will not change from this screen</span></div></div>
+          <a className="btn btn-outline service-support-link" href={WHATSAPP_URL} target="_blank" rel="noreferrer">Contact support <Icon name="external" size={14}/></a>
         </section>
       </div>
       <div className="trade-lower-grid">
@@ -988,18 +958,23 @@ function App() {
   function renderRequestModal() {
     if (!modal) return null;
     const deposit = modal === "deposit";
-    const asset = ASSET_OPTIONS.find(a => a.id === request.asset) || ASSET_OPTIONS[0];
-    return <div className="modal-scrim" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setModal(null); }}><section className="request-modal" role="dialog" aria-modal="true" aria-labelledby="request-heading"><div className="modal-head"><div><span className="section-kicker">{deposit ? "ADD TO YOUR ACCOUNT" : "MOVE ASSETS OUT"}</span><h2 id="request-heading">{deposit ? "Deposit request" : "Withdrawal request"}</h2><p>Provider integration required</p></div><button className="icon-button" aria-label="Close" onClick={() => setModal(null)}><Icon name="close" /></button></div>
-      <div className="modal-asset-grid">{ASSET_OPTIONS.map(a=><button key={a.id} className={"asset-select " + (request.asset === a.id ? "asset-selected" : "")} onClick={() => { changeRequest("asset",a.id); changeRequest("network",a.id === "bitcoin" ? "bitcoin" : a.id === "ethereum" ? "ethereum" : "trc20"); }}><span className="coin-mark sm" style={{"--coin":a.color}}>{request.country==="United States" && a.id==="mobile" ? "$" : a.mark}</span><span>{request.country==="United States" && a.id==="mobile" ? "USD bank funding (ACH/card)" : a.label}</span>{request.asset === a.id && <Icon name="check" size={14}/>}</button>)}</div>
-      <form className="request-form" onSubmit={submitRequest}><label>Amount {asset.type === "mobile" ? (request.country === "Uganda" ? "(UGX)" : "(USD)") : "(" + (asset.id === "bitcoin" ? "BTC" : asset.id === "ethereum" ? "ETH" : "USDT") + ")"}
-        <div className="amount-input-wrap"><input type="number" min="0.000001" step="any" value={request.amount} onChange={e => changeRequest("amount",e.target.value)} placeholder="0.00" required/><span>{asset.type === "mobile" ? (request.country === "Uganda" ? "UGX" : "USD") : asset.id === "bitcoin" ? "BTC" : asset.id === "ethereum" ? "ETH" : "USDT"}</span></div></label>
-        {asset.type === "crypto" ? <label>Network<select value={request.network} onChange={e=>changeRequest("network",e.target.value)}>{(asset.id === "bitcoin" ? [{value:"bitcoin",label:"Bitcoin network"}] : asset.id === "ethereum" ? [{value:"ethereum",label:"Ethereum mainnet"}] : [{value:"trc20",label:"TRON (TRC-20)"},{value:"erc20",label:"Ethereum (ERC-20)"}]).map(n=><option key={n.value} value={n.value}>{n.label}</option>)}</select><small className="field-help">Only choose a real network after wallet infrastructure and the matching deposit/withdrawal address are configured.</small></label> : <><label>Country / region<select value={request.country} onChange={e=>{const country=e.target.value;changeRequest("country",country);changeRequest("provider",country==="United States"?"U.S. bank transfer (ACH)":"MTN Mobile Money");}}>{COUNTRIES.map(c=><option key={c}>{c}</option>)}</select></label><label>Payment method<select value={request.provider} onChange={e=>changeRequest("provider",e.target.value)}>{(request.country==="United States"?["U.S. bank transfer (ACH)","Debit/credit card"]:["MTN Mobile Money","Airtel Money","M-Pesa","Other provider"]).map(p=><option key={p}>{p}</option>)}</select></label>{request.country==="United States" ? <small className="field-help">Bank or card details must be collected through the connected provider’s secure hosted checkout, not this form.</small> : <label>Mobile money phone number<input type="tel" value={request.phone} onChange={e=>changeRequest("phone",e.target.value)} placeholder="Enter a number with country code" required/><small className="field-help">The selected mobile-money provider must be connected before a payment can begin.</small></label>}</>}
-        {!deposit && asset.type === "crypto" && <label>Destination wallet address<input value={request.destination} onChange={e=>changeRequest("destination",e.target.value)} placeholder="Destination wallet address" required/><small className="field-help">Never send to an address until the network and recipient have been independently verified.</small></label>}
-        <div className="request-warning"><Icon name="info" size={17}/><span><b>Service unavailable.</b> {deposit ? "A verified custody wallet or mobile-money collection provider is not connected." : "Withdrawals are disabled until a verified custody wallet or payout provider is connected."} Do not send funds to this platform yet.</span></div>
-        <label className="check-row request-check"><input type="checkbox" required checked={request.acknowledged} onChange={e=>changeRequest("acknowledged",e.target.checked)}/><span>I understand the requested service is currently unavailable and this form will not move funds.</span></label>
-        <button className="btn btn-primary auth-submit" type="submit" disabled>{deposit ? "Deposits unavailable" : "Withdrawals unavailable"}</button>
-      </form>
-    </section></div>;
+    return <div className="modal-scrim" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) setModal(null); }}>
+      <section className="request-modal service-status-modal" role="dialog" aria-modal="true" aria-labelledby="request-heading">
+        <div className="modal-head"><div><span className="section-kicker">{deposit ? "ADD TO YOUR ACCOUNT" : "MOVE ASSETS OUT"}</span><h2 id="request-heading">{deposit ? "Deposits are unavailable" : "Withdrawals are unavailable"}</h2><p>Required provider integrations are not active.</p></div><button className="icon-button" aria-label="Close" onClick={() => setModal(null)}><Icon name="close" /></button></div>
+        <div className="service-disabled-panel">
+          <span className="service-disabled-icon"><Icon name="lock" size={22}/></span>
+          <div><span className="service-state-badge">NOT ENABLED</span><h3>{deposit ? "No payment or custody provider is connected" : "No withdrawal/payout provider is connected"}</h3>
+            <p>{deposit ? "GROEarnX cannot accept ACH, card, mobile-money or crypto deposits yet. This screen does not accept payment details and no deposit address has been created." : "GROEarnX cannot submit or process a crypto transfer or cash payout yet. No assets will be sent from this screen."}</p>
+          </div>
+        </div>
+        <div className="service-readiness-list">
+          <div><Icon name="check-circle" size={16}/><span>Your account and existing transaction history remain available subject to security checks.</span></div>
+          <div><Icon name="lock" size={16}/><span>{deposit ? "Funding checkout and verified deposit addresses will appear only after a contracted provider is activated." : "A withdrawal can only be requested after custody, identity checks, approvals and settlement controls are connected."}</span></div>
+          <div><Icon name="info" size={16}/><span>Do not send funds to wallet addresses shared through chat or support messages.</span></div>
+        </div>
+        <div className="service-modal-actions"><a className="btn btn-outline service-support-link" href={WHATSAPP_URL} target="_blank" rel="noreferrer">Contact support <Icon name="external" size={14}/></a><button className="btn btn-primary" onClick={() => setModal(null)}>Close</button></div>
+      </section>
+    </div>;
   }
 
   function ActivityTable({ items }) {
