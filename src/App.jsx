@@ -153,6 +153,7 @@ function App() {
   const [adminProfiles, setAdminProfiles] = useState([]);
   const [verificationQueue, setVerificationQueue] = useState([]);
   const [adminUserCount, setAdminUserCount] = useState(null);
+  const [adminDataWarning, setAdminDataWarning] = useState("");
   const [financialReadiness, setFinancialReadiness] = useState(null);
   const [readinessLoading, setReadinessLoading] = useState(false);
   const [readinessRefresh, setReadinessRefresh] = useState(0);
@@ -861,12 +862,27 @@ function App() {
       supabase.from("user_verifications").select("id,user_id,provider_name,provider_reference,status,created_at,updated_at").order("created_at", { ascending: false }).limit(100),
     ]).then(([requestResult, userResult, ticketResult, profilesResult, verificationResult]) => {
       if (!active) return;
+      const failedSections = [
+        requestResult.error && "transaction requests",
+        userResult.error && "customer count",
+        ticketResult.error && "support inbox",
+        profilesResult.error && "customer list",
+        verificationResult.error && "verification queue",
+      ].filter(Boolean);
+      setAdminDataWarning(failedSections.length
+        ? "Some admin data could not be loaded (" + failedSections.join(", ") + "). The corresponding section may be incomplete; refresh and check admin permissions."
+        : "");
       if (requestResult.data) setAdminRequests(requestResult.data);
       if (!userResult.error) setAdminUserCount(userResult.count ?? null);
       if (ticketResult.data) setSupportTickets(ticketResult.data);
       if (profilesResult.data) setAdminProfiles(profilesResult.data);
       if (verificationResult.data) setVerificationQueue(verificationResult.data);
-    }).catch(() => { if (active) notify("The admin queue could not be loaded. Check the assigned admin role and database policies."); });
+    }).catch(() => {
+      if (active) {
+        setAdminDataWarning("The admin queues could not be loaded. Check the assigned admin role, MFA status, and database policies.");
+        notify("The admin queue could not be loaded. Check the assigned admin role and database policies.");
+      }
+    });
     return () => { active = false; };
   }, [authUser, mfaAccessGranted, isAdmin, tab, dashboardRefresh]);
 
@@ -1115,8 +1131,6 @@ function App() {
     if (!market.length) return <section className="panel-card route-panel"><div className="panel-heading"><div><h2>Market data unavailable</h2><p>Live public quotes could not be loaded. Trading remains unavailable until market data and an execution provider are configured.</p></div></div></section>;
     const coin = market.find(c=>c.id===tradePair) || market[0];
     const priceText = coin.price>10 ? money(coin.price,2) : money(coin.price,4);
-    const amount = Number(tradeAmount || 0);
-    const qty = Number.isFinite(amount) && amount>0 ? amount/coin.price : 0;
     const high = coin.high24h, low = coin.low24h;
     const volume = coin.volume24h;
     return <div className="trade-terminal">
@@ -1187,7 +1201,7 @@ function App() {
           {tab === "Activity" && <section className="panel-card route-panel"><div className="panel-heading"><div><h2>Transaction activity</h2><p>Requests and status updates recorded for your account.</p></div><div className="inline-buttons"><button className="btn btn-outline btn-sm" onClick={() => openRequest("withdraw")}>Withdraw</button><button className="btn btn-primary btn-sm" onClick={() => openRequest("deposit")}>Deposit</button></div></div><ActivityTable items={transactions}/><div className="activity-note"><Icon name="info" size={16}/> A real ledger must only mark a deposit settled after provider or blockchain confirmation.</div></section>}
           {tab === "Fees & Limits" && <section className="panel-card route-panel fees-limits-page">
             <div className="panel-heading"><div><h2>Fees &amp; transaction limits</h2><p>Only operator-reviewed fee schedules currently effective for the service are shown here. We do not invent or estimate fees.</p></div><span className={"status-label "+(feeSchedules.length?"status-ok":"status-pending")}>{feeSchedules.length ? feeSchedules.length+" published schedules" : "No schedules published"}</span></div>
-            <div className="fees-service-notice"><span className="service-disabled-icon"><Icon name="info" size={20}/></span><div><b>Charges must be confirmed before a transaction is submitted.</b><p>Displayed schedules are informational. The connected provider must return and confirm the final quote, network fees, applicable limits and total cost before a customer accepts a real transaction.</p></div></div>
+            {feesLoadError && <div className="dashboard-ledger-notice dashboard-data-warning"><span><Icon name="info" size={17}/></span><div><b>Fee schedule unavailable</b><p>{feesLoadError}</p></div></div>}<div className="fees-service-notice"><span className="service-disabled-icon"><Icon name="info" size={20}/></span><div><b>Charges must be confirmed before a transaction is submitted.</b><p>Displayed schedules are informational. The connected provider must return and confirm the final quote, network fees, applicable limits and total cost before a customer accepts a real transaction.</p></div></div>
             {feeSchedules.length===0 ? <div className="empty-state"><Icon name="info" size={25}/><b>No verified fee schedule is published.</b><span>GROEarnX currently has no active, reviewed fee-and-limit records. Deposits, withdrawals and trade execution remain disabled until contracted providers, fee schedules, limits, legal approvals and settlement tests are in place.</span></div> : <div className="table-wrap"><table className="market-table fees-table"><thead><tr><th>Service</th><th>Coverage</th><th>Published fee</th><th>Transaction limits</th><th>Terms</th></tr></thead><tbody>{feeSchedules.map(fee=>{
               const fixed=fee.fixed_fee===null || fee.fixed_fee===undefined ? null : Number(fee.fixed_fee);
               const percentage=fee.fee_percentage===null || fee.fee_percentage===undefined ? null : Number(fee.fee_percentage);
@@ -1231,7 +1245,7 @@ function App() {
           </section>}
           {tab === "Verification" && <section className="panel-card route-panel verification-page"><div className="panel-heading"><div><h2>Identity verification</h2><p>Secure verification must be completed through an approved KYC provider when required.</p></div><span className={"status-label "+(profile.kycStatus==="verified"?"status-ok":"status-pending")}><i/>{profile.kycStatus==="verified"?"Verified":profile.kycStatus==="pending"?"In review":"Not verified"}</span></div><div className="verification-steps"><div className="verification-step"><span>01</span><div><b>Country / region</b><p>{profile.country || "Add your country in profile settings."}</p></div><span className="status-label status-ok">{profile.country?"Provided":"Required"}</span></div><div className="verification-step"><span>02</span><div><b>National ID or driving permit</b><p>Submit documents only through the secure identity provider when that integration is available. Do not send ID images over chat.</p></div><span className="status-label status-pending">Provider required</span></div><div className="verification-step"><span>03</span><div><b>Review and approval</b><p>Account limits and regulated features depend on the verified result.</p></div><span className={"status-label "+(profile.kycStatus==="verified"?"status-ok":"status-pending")}>{profile.kycStatus.replaceAll("_"," ")}</span></div></div><button className="btn btn-outline" onClick={() => setTab("Profile")}>Review profile <Icon name="arrowRight" size={14}/></button></section>}
           {tab === "Profile" && <section className="panel-card route-panel profile-page"><div className="panel-heading"><div><h2>Profile &amp; preferences</h2><p>Update your contact and region information.</p></div><span className="status-label status-ok">Authenticated</span></div><form className="profile-edit-form" onSubmit={saveProfile}><label>Display name<input name="displayName" value={profile.name} onChange={e=>setProfile(p=>({...p,name:e.target.value}))} required maxLength={100}/></label><label>Email address<input value={profile.email} readOnly disabled/></label><label>Country / region<select name="country" value={profile.country} onChange={e=>setProfile(p=>({...p,country:e.target.value,stateRegion:e.target.value==="United States"?p.stateRegion:""}))} required><option value="">Choose your country</option>{COUNTRIES.map(country=><option key={country}>{country}</option>)}</select></label>{profile.country==="United States" && <label>State / territory<select name="stateRegion" value={profile.stateRegion||""} onChange={e=>setProfile(p=>({...p,stateRegion:e.target.value}))} required><option value="">Choose your state</option>{US_STATES.map(state=><option key={state}>{state}</option>)}</select></label>}<label>Phone number<input name="phone" value={profile.phone||""} onChange={e=>setProfile(p=>({...p,phone:e.target.value}))} autoComplete="tel" maxLength={40} placeholder="+1…"/></label><button className="btn btn-primary" type="submit" disabled={authBusy}>{authBusy ? "Saving profile…" : "Save profile"} <Icon name="check" size={15}/></button></form><div className="profile-grid"><div className="profile-field"><span>Identity verification</span><b>{profile.kycStatus==="verified"?"Verified":"Not verified"}</b></div><div className="profile-field"><span>Account status</span><b>Authenticated</b></div></div><div className="activity-note"><Icon name="shield" size={16}/> National ID and driving-permit details belong in the secure KYC provider flow, not ordinary profile fields.</div></section>}
-          {tab === "Admin" && isAdmin && <section className="panel-card route-panel admin-page"><div className="panel-heading"><div><h2>Administration</h2><p>Read-only operational view. Use server-side admin functions for approvals and provider actions.</p></div><span className="status-label status-ok">Restricted access</span></div><section className="provider-readiness-panel">
+          {tab === "Admin" && isAdmin && <section className="panel-card route-panel admin-page"><div className="panel-heading"><div><h2>Administration</h2><p>Read-only operational view. Use server-side admin functions for approvals and provider actions.</p></div><span className="status-label status-ok">Restricted access</span></div>{adminDataWarning && <div className="dashboard-ledger-notice dashboard-data-warning"><span><Icon name="info" size={17}/></span><div><b>Admin data needs attention</b><p>{adminDataWarning}</p></div></div>}<section className="provider-readiness-panel">
             <div className="provider-readiness-header"><div><span className="section-kicker">PRODUCTION CHECKS</span><h3>Financial service readiness</h3><p>Configuration presence is not the same as a successful provider test. Services remain disabled until each prerequisite is verified.</p></div><div className="provider-readiness-actions"><span className={"status-label "+(financialReadiness?.realMoneyReady?"status-ok":"status-pending")}>{readinessLoading?"Checking…":financialReadiness?.realMoneyReady?"Ready checks passed":"Not ready for real funds"}</span><button className="btn btn-outline btn-sm" onClick={()=>setReadinessRefresh(v=>v+1)} disabled={readinessLoading}>{readinessLoading?"Checking…":"Refresh checks"}</button></div></div>
             {financialReadiness?.error && <div className="readiness-error"><Icon name="info" size={16}/><span>{financialReadiness.error}</span></div>}
             {financialReadiness?.services && <>
