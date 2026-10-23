@@ -27,7 +27,7 @@ GROEarnX is a React/Vite crypto-market interface with a Supabase-backed account 
 
 Read [US_LAUNCH_GUIDE.md](./US_LAUNCH_GUIDE.md) for the step-by-step legal, provider, hosting, testing and troubleshooting plan for operating in the United States.
 
-The current Supabase project region is eu-west-2 (UK); approve the production data region before onboarding U.S. customers. State and licensing eligibility must be enforced from trusted server-side/KYC records, not the editable state value in Auth metadata. U.S. ACH/card, custody wallets, mobile-money and exchange execution are not connected, so financial actions remain disabled. A public Vercel deployment also requires the correct Vercel team access to be authorized.
+The current Supabase project region is eu-west-2 (UK); approve the production data region before onboarding U.S. customers. State and licensing eligibility must be enforced from trusted server-side/KYC records, not the editable state value in Auth metadata. U.S. ACH/card, custody wallets, mobile-money and exchange execution are not connected, so financial actions remain disabled. The public site at https://crypto-ten-liart.vercel.app is reachable and has been checked for the latest frontend changes. The connected Vercel management integration cannot read project settings because its team scope returns an authorization error.
 
 ## Financial controls and go-live requirements
 
