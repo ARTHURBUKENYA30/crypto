@@ -12,11 +12,13 @@ GROEarnX is a React/Vite crypto-market interface with a Supabase-backed account 
 - **Custody, payments, KYC, exchange orders, notifications and admin operations:** Database foundations exist for some records, but the required provider integrations and end-to-end operational workflows are not yet complete. Do not accept customer funds or advertise live trading/investment services yet.
 - **Investment plans:** No plan or return is enabled by default. Never advertise a return as guaranteed.
 - **Login recovery and session behavior:** The frontend now handles network exceptions without leaving sign-in/loading states stuck, restores valid sessions to the account view, routes email-confirmed sessions to security setup, and provides a password-reset completion screen. These code fixes do not replace the Supabase production URL, key, email-delivery or redirect configuration.
+- **Production backend repair:** The previous frontend fallback pointed to a Supabase host that failed DNS resolution. The source fallback and active Vercel bundle now point to `https://rqmibtetfzaiadawvnlz.supabase.co`; a live invalid-credential smoke test returned the normal credentials error rather than a network failure.
+- **Database schema:** The account/ledger foundation and MFA database policies are applied to that active project and checked via the Supabase table/migration listing. It contains no seeded funds, wallet addresses or transaction history.
 - **Watchlist:** Market watchlist selections persist in the current browser only; they are not synced between devices or stored in the user account.
 
 ## Configure real account authentication
 
-1. In Supabase project **crypto** (project ref `bxynrnkhnpwsbxamsxpt`), open Authentication → URL Configuration. Set **Site URL** to `https://crypto-ten-liart.vercel.app` and add `https://crypto-ten-liart.vercel.app/**` to the allowed Redirect URLs. Signup confirmation and password recovery redirect to the current site origin, so this origin must be allow-listed.
+1. In Supabase project **crypto** (project ref `rqmibtetfzaiadawvnlz`), open Authentication → URL Configuration. Set **Site URL** to `https://crypto-ten-liart.vercel.app` and add `https://crypto-ten-liart.vercel.app/**` to the allowed Redirect URLs. Signup confirmation and password recovery redirect to the current site origin, so this origin must be allow-listed.
 2. Enable email confirmation and configure confirmation/password-reset email templates, rate limits, abuse protection and MFA policy. Existing accounts must confirm their email before password sign-in if confirmation is enabled.
 3. Copy `.env.example` to `.env.local`.
 4. Set `VITE_SUPABASE_URL` to the exact Supabase project URL and `VITE_SUPABASE_PUBLISHABLE_KEY` to its publishable key. Ensure any Vercel environment-variable overrides point to the same project. Never use a service-role/secret key in a Vite client.
@@ -27,7 +29,7 @@ GROEarnX is a React/Vite crypto-market interface with a Supabase-backed account 
 
 Read [US_LAUNCH_GUIDE.md](./US_LAUNCH_GUIDE.md) for the step-by-step legal, provider, hosting, testing and troubleshooting plan for operating in the United States.
 
-The current Supabase project region is eu-west-2 (UK); approve the production data region before onboarding U.S. customers. State and licensing eligibility must be enforced from trusted server-side/KYC records, not the editable state value in Auth metadata. U.S. ACH/card, custody wallets, mobile-money and exchange execution are not connected, so financial actions remain disabled. The public site at https://crypto-ten-liart.vercel.app is reachable and has been checked for the latest frontend changes. The connected Vercel management integration cannot read project settings because its team scope returns an authorization error.
+The active Supabase project `rqmibtetfzaiadawvnlz` is in region eu-west-1 (Ireland); approve the production data region before onboarding U.S. customers. State and licensing eligibility must be enforced from trusted server-side/KYC records, not the editable state value in Auth metadata. U.S. ACH/card, custody wallets, mobile-money and exchange execution are not connected, so financial actions remain disabled. The public site at https://crypto-ten-liart.vercel.app is reachable and has been checked for the latest frontend changes. The connected Vercel management integration cannot read project settings because its team scope returns an authorization error.
 
 ## Financial controls and go-live requirements
 
