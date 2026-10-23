@@ -134,6 +134,8 @@ function App() {
   const [mfaAccessGranted, setMfaAccessGranted] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [walletBalances, setWalletBalances] = useState({});
+  const [balancesStatus, setBalancesStatus] = useState("idle");
+  const [feesLoadError, setFeesLoadError] = useState("");
   const [wallets, setWallets] = useState([]);
   const [portfolioHistory, setPortfolioHistory] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -224,15 +226,19 @@ function App() {
   const coinById = useMemo(() => Object.fromEntries(market.map(c => [c.id, c])), [market]);
   const portfolioRows = useMemo(() => ASSET_META.map(asset => {
     const quote = market.find(coin => coin.id === asset.id);
-    const units = Number(walletBalances[asset.symbol] || 0);
+    const units = balancesStatus === "available" ? Number(walletBalances[asset.symbol] || walletBalances[asset.id] || 0) : NaN;
     const price = Number.isFinite(quote?.price) ? quote.price : null;
     const change = Number.isFinite(quote?.change) ? quote.change : null;
-    const value = price === null ? null : price * units;
+    const value = price === null || !Number.isFinite(units) ? null : price * units;
     const divisor = change === null ? null : 1 + change / 100;
     const previousValue = value === null || divisor === null || divisor <= 0 ? null : value / divisor;
     return { ...asset, ...(quote || {}), price, change, units, value, previousValue };
-  }), [market, walletBalances]);
-  const completeValuation = portfolioRows.length > 0 && portfolioRows.every(coin => Number.isFinite(coin.value));
+  }), [market, walletBalances, balancesStatus]);
+  const knownBalanceCodes = useMemo(() => new Set(ASSET_META.flatMap(asset => [asset.symbol.toUpperCase(), asset.id.toUpperCase()])), []);
+  const unpricedBalanceRows = useMemo(() => Object.entries(walletBalances)
+    .filter(([assetCode, units]) => Number.isFinite(Number(units)) && Number(units) > 0 && !knownBalanceCodes.has(assetCode.toUpperCase()))
+    .map(([assetCode, units]) => ({ assetCode, units: Number(units) })), [walletBalances, knownBalanceCodes]);
+  const completeValuation = balancesStatus === "available" && unpricedBalanceRows.length === 0 && portfolioRows.length > 0 && portfolioRows.every(coin => Number.isFinite(coin.value));
   const portfolioValue = completeValuation ? portfolioRows.reduce((sum, coin) => sum + coin.value, 0) : NaN;
   const completePreviousValuation = portfolioRows.length > 0 && portfolioRows.every(coin => Number.isFinite(coin.previousValue));
   const previousValue = completePreviousValuation ? portfolioRows.reduce((sum, coin) => sum + coin.previousValue, 0) : NaN;
@@ -672,6 +678,8 @@ function App() {
       setAuthUser(null);
       setMfaAccessGranted(false);
       setWalletBalances({});
+      setBalancesStatus("idle");
+      setFeesLoadError("");
       setWallets([]);
       setPortfolioHistory([]);
       setNotifications([]);
@@ -764,6 +772,8 @@ function App() {
     if (!supabaseConfigured || !authUser || !mfaAccessGranted) return;
     let active = true;
     async function loadAccountData() {
+      setBalancesStatus("loading");
+      setFeesLoadError("");
       const [p, tx, balance, walletResult, history, notif, plans, factors, fees] = await Promise.all([
         supabase.from("profiles").select("display_name,country,state_region,phone,kyc_status").eq("id", authUser.id).maybeSingle(),
         supabase.from("transaction_requests").select("id,request_type,asset_code,amount,status,created_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(100),
@@ -777,10 +787,23 @@ function App() {
       ]);
       const ticketResult = await supabase.from("support_tickets").select("id,user_id,category,subject,message,status,admin_response,created_at,updated_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(50);
       if (!active) return;
+      const queryResults = [p, tx, balance, walletResult, history, notif, plans, factors, fees, ticketResult];
+      if (queryResults.some(result => result?.error)) {
+        notify("Some account information could not be loaded. Check the account permissions and refresh before relying on the displayed data.");
+      }
+      if (balance.error) {
+        setBalancesStatus("error");
+        setWalletBalances({});
+      } else if (balance.data) {
+        setWalletBalances(Object.fromEntries(balance.data.map(b => [b.asset_code.toUpperCase(), Number(b.balance)])));
+        setBalancesStatus("available");
+      } else {
+        setBalancesStatus("error");
+      }
+      if (fees.error) setFeesLoadError("The fee schedule could not be loaded. Do not assume any fees or limits are zero.");
       if (ticketResult.data) setSupportTickets(ticketResult.data);
       if (p.data) setProfile(prev => ({ ...prev, name: p.data.display_name || prev.name, country: p.data.country || prev.country, stateRegion: p.data.state_region || prev.stateRegion, phone: p.data.phone || "", kycStatus: p.data.kyc_status || "not_started" }));
       if (tx.data) setTransactions(tx.data.map(t => ({ id:t.id, type:t.request_type.replaceAll("_"," "), asset:t.asset_code, amount:Number(t.amount), unit:t.asset_code, date:new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"2-digit",year:"numeric"}), status:t.status })));
-      if (balance.data) setWalletBalances(Object.fromEntries(balance.data.map(b => [b.asset_code, Number(b.balance)])));
       if (walletResult.data) setWallets(walletResult.data);
       if (history.data) setPortfolioHistory(history.data.slice().reverse());
       if (notif.data) setNotifications(notif.data);
@@ -1104,8 +1127,8 @@ function App() {
           <div className="dashboard-ledger-notice"><span><Icon name="info" size={17} /></span><div><b>Your account overview</b><p>Only posted ledger balances are shown here. Market-price changes can increase or decrease the value of your holdings. Deposits, withdrawals and trading require verified service integrations.</p></div><button onClick={() => notify("Real balances should come from a server-side ledger reconciled with trusted wallet/payment providers.")}>How balances work <Icon name="arrowRight" size={13} /></button></div>
           {tab === "Overview" && <>
             <div className="dashboard-metric-grid">
-              <section className="metric-card primary-metric"><div className="metric-label"><span>Portfolio value</span><button className="eye-toggle" aria-label="Toggle balance visibility" onClick={() => setShowBalances(v => !v)}><Icon name="eye" size={16} /></button></div><div className="metric-number">{showBalances ? money(portfolioValue) : "••••••••"}</div><div className="metric-foot">{Number.isFinite(dailyChange) ? <><span className={"metric-change " + (dailyChange >= 0 ? "positive" : "negative")}>{dailyChange >= 0 ? "+" : "−"}{money(Math.abs(dailyChange))} ({changeText(dailyChangePct)})</span><span>estimated from current posted holdings</span></> : <><span className="metric-change">Unavailable</span><span>Fresh quotes needed to value posted assets</span></>}</div><div className="metric-chart">{portfolioHistory.length > 1 ? <Sparkline values={portfolioHistory.map(point=>Number(point.total_value_usd))} color="#FFFFFF" width={350} height={77} fill/> : <span className="chart-note">Portfolio history appears after valuation snapshots are recorded.</span>}</div><small className="metric-period">{marketStatus === "live" ? "Calculated from posted units × live prices" : "Portfolio value updates when settled units and current market quotes are available"}</small></section>
-              <section className="metric-card"><div className="metric-card-top"><span className="metric-icon"><Icon name="wallet" /></span><span className="metric-badge">ACCOUNT</span></div><div className="metric-label">Assets tracked</div><div className="metric-number small-number">{portfolioRows.filter(c => c.units > 0).length}</div><p className="metric-caption">Assets with posted balances</p><button className="metric-link" onClick={() => setTab("Portfolio")}>View portfolio <Icon name="arrowRight" size={14} /></button></section>
+              <section className="metric-card primary-metric"><div className="metric-label"><span>Portfolio value</span><button className="eye-toggle" aria-label="Toggle balance visibility" onClick={() => setShowBalances(v => !v)}><Icon name="eye" size={16} /></button></div><div className="metric-number">{showBalances ? money(portfolioValue) : "••••••••"}</div><div className="metric-foot">{Number.isFinite(dailyChange) ? <><span className={"metric-change " + (dailyChange >= 0 ? "positive" : "negative")}>{dailyChange >= 0 ? "+" : "−"}{money(Math.abs(dailyChange))} ({changeText(dailyChangePct)})</span><span>estimated from current posted holdings</span></> : <><span className="metric-change">Unavailable</span><span>{balancesStatus === "error" ? "The ledger could not be read; no balance estimate is shown" : balancesStatus === "loading" ? "Checking the posted ledger" : unpricedBalanceRows.length ? "One or more asset balances lack supported market quotes" : "Fresh quotes needed to value posted assets"}</span></>}</div><div className="metric-chart">{portfolioHistory.length > 1 ? <Sparkline values={portfolioHistory.map(point=>Number(point.total_value_usd))} color="#FFFFFF" width={350} height={77} fill/> : <span className="chart-note">Portfolio history appears after valuation snapshots are recorded.</span>}</div><small className="metric-period">{marketStatus === "live" ? "Calculated from posted units × live prices" : "Portfolio value updates when settled units and current market quotes are available"}</small></section>
+              <section className="metric-card"><div className="metric-card-top"><span className="metric-icon"><Icon name="wallet" /></span><span className="metric-badge">ACCOUNT</span></div><div className="metric-label">Assets tracked</div><div className="metric-number small-number">{balancesStatus === "available" ? portfolioRows.filter(c => c.units > 0).length + unpricedBalanceRows.length : "—"}</div><p className="metric-caption">{balancesStatus === "available" ? "Assets with posted balances" : "Ledger balance unavailable"}</p><button className="metric-link" onClick={() => setTab("Portfolio")}>View portfolio <Icon name="arrowRight" size={14} /></button></section>
               <section className="metric-card"><div className="metric-card-top"><span className="metric-icon purple"><Icon name="activity" /></span><span className="metric-badge">SESSION</span></div><div className="metric-label">Activity requests</div><div className="metric-number small-number">{transactions.length}</div><p className="metric-caption">Account activity loaded from your records</p><button className="metric-link" onClick={() => setTab("Activity")}>View activity <Icon name="arrowRight" size={14} /></button></section>
             </div>
             <div className="content-grid-main">
@@ -1123,7 +1146,7 @@ function App() {
             {wallets.length===0 ? <div className="empty-state"><Icon name="wallet" size={26}/><b>No wallet addresses are available yet.</b><span>BTC, ETH and USDT wallet addresses will appear here only after the selected custody provider has provisioned and verified them for your account. Do not send assets to GROEarnX until a verified address is shown.</span></div> : <div className="table-wrap"><table className="market-table wallets-table"><thead><tr><th>Asset</th><th>Network</th><th>Address</th><th>Provider</th><th>Status</th></tr></thead><tbody>{wallets.map(w=><tr key={w.id}><td><b>{w.asset_code}</b></td><td>{w.network}</td><td>{w.address_status==="active" && w.deposit_address ? <div className="wallet-address-cell"><code>{w.deposit_address}</code><button className="btn btn-outline btn-sm" onClick={async()=>{try{await navigator.clipboard.writeText(w.deposit_address);notify("Wallet address copied. Verify the network before sending.");}catch{notify("Could not copy address. Select and copy it manually.");}}}>Copy</button></div> : <span className="muted-cell">Not available</span>}</td><td>{w.provider_name || "—"}</td><td><span className={"status-label "+(w.address_status==="active" && w.deposit_address?"status-ok":"status-pending")}>{String(w.address_status).replaceAll("_"," ")}</span></td></tr>)}</tbody></table></div>}
             <div className="activity-note"><Icon name="info" size={16}/> Wallet records are read-only for customers. Address creation, withdrawals and transaction signing must be performed by the secure server-side custody integration.</div>
           </section>}
-          {tab === "Portfolio" && <section className="panel-card route-panel"><div className="panel-heading"><div><h2>Your assets</h2><p>Quantity × public market quote. Only posted ledger balances are included.</p></div><button className="btn btn-primary btn-sm" onClick={() => openRequest("deposit")}><Icon name="plus" size={14}/> Deposit request</button></div><div className="portfolio-summary-strip"><span>Portfolio value</span><strong>{showBalances ? money(portfolioValue) : "••••••"}</strong><button className="eye-toggle" onClick={() => setShowBalances(v => !v)}><Icon name="eye" size={15}/></button></div><div className="table-wrap"><table className="market-table portfolio-table"><thead><tr><th>Asset</th><th>Units</th><th>Price</th><th>Value</th><th>24h</th></tr></thead><tbody>{portfolioRows.map(c=><tr key={c.id}><td><div className="asset-cell"><CoinMark coin={c}/><div><b>{c.name}</b><small>{c.symbol}</small></div></div></td><td>{shortNumber(c.units,8)} {c.symbol}</td><td>{c.price > 10 ? money(c.price) : money(c.price,4)}</td><td><b>{showBalances ? money(c.value) : "••••"}</b></td><td><PriceChange value={c.change}/></td></tr>)}</tbody></table></div></section>}
+          {tab === "Portfolio" && <section className="panel-card route-panel"><div className="panel-heading"><div><h2>Your assets</h2><p>Quantity × public market quote. Only posted ledger balances are included.</p></div><button className="btn btn-primary btn-sm" onClick={() => openRequest("deposit")}><Icon name="plus" size={14}/> Deposit request</button></div><div className="portfolio-summary-strip"><span>Portfolio value</span><strong>{showBalances ? money(portfolioValue) : "••••••"}</strong><button className="eye-toggle" onClick={() => setShowBalances(v => !v)}><Icon name="eye" size={15}/></button></div><div className="table-wrap"><table className="market-table portfolio-table"><thead><tr><th>Asset</th><th>Units</th><th>Price</th><th>Value</th><th>24h</th></tr></thead><tbody>{portfolioRows.map(c=><tr key={c.id}><td><div className="asset-cell"><CoinMark coin={c}/><div><b>{c.name}</b><small>{c.symbol}</small></div></div></td><td>{Number.isFinite(c.units) ? shortNumber(c.units,8)+" "+c.symbol : "—"}</td><td>{Number.isFinite(c.price) ? (c.price > 10 ? money(c.price) : money(c.price,4)) : "—"}</td><td><b>{showBalances ? (Number.isFinite(c.value) ? money(c.value) : "—") : "••••"}</b></td><td><PriceChange value={c.change}/></td></tr>)}</tbody></table></div>{unpricedBalanceRows.length>0 && <div className="activity-note"><Icon name="info" size={16}/> These posted asset balances are not included in the total because GROEarnX does not have verified current market quotes for them: {unpricedBalanceRows.map(row=>row.assetCode+" ("+shortNumber(row.units,8)+")").join(", ")}.</div>}{balancesStatus==="error" && <div className="activity-note"><Icon name="info" size={16}/> The ledger balance could not be loaded. Unit quantities and values are unavailable until the query succeeds.</div>}</section>}
           {tab === "Markets" && <section className="panel-card route-panel"><div className="panel-heading"><div><h2>Crypto markets</h2><p>{marketStatus === "live" ? "Current public market data and price changes." : "Live quote feed unavailable. Prices are not displayed until a fresh quote is received."}</p></div><span className={"feed-state " + (marketStatus === "live" ? "feed-live" : "")}><i />{marketStatus === "live" ? "Live quotes" : "Unavailable"}</span></div><MarketTable rows={market}/><p className="data-note"><Icon name="info" size={14}/> Market prices change frequently. This page is informational and does not execute trades.</p></section>}
           {tab === "Activity" && <section className="panel-card route-panel"><div className="panel-heading"><div><h2>Transaction activity</h2><p>Requests and status updates recorded for your account.</p></div><div className="inline-buttons"><button className="btn btn-outline btn-sm" onClick={() => openRequest("withdraw")}>Withdraw</button><button className="btn btn-primary btn-sm" onClick={() => openRequest("deposit")}>Deposit</button></div></div><ActivityTable items={transactions}/><div className="activity-note"><Icon name="info" size={16}/> A real ledger must only mark a deposit settled after provider or blockchain confirmation.</div></section>}
           {tab === "Fees & Limits" && <section className="panel-card route-panel fees-limits-page">
