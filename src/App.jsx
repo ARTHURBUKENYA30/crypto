@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase, supabaseConfigured } from "./lib/supabase.js";
 
 const CONTACT_PHONE = "+447404517328";
@@ -150,6 +150,7 @@ function App() {
   const [mfaCode, setMfaCode] = useState("");
   const [mfaLogin, setMfaLogin] = useState(null);
   const [passwordRecoveryActive, setPasswordRecoveryActive] = useState(false);
+  const explicitAuthFlowRef = useRef(false);
   const [mfaBusy, setMfaBusy] = useState(false);
   const [adminRequests, setAdminRequests] = useState([]);
   const [adminUserCount, setAdminUserCount] = useState(null);
@@ -257,6 +258,7 @@ function App() {
       return;
     }
     const form = e.currentTarget;
+    explicitAuthFlowRef.current = true;
     setAuthBusy(true);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -305,6 +307,7 @@ function App() {
     } catch (error) {
       notify(authErrorMessage(error, "Sign-in could not be completed. Check your connection and try again."));
     } finally {
+      explicitAuthFlowRef.current = false;
       setAuthBusy(false);
     }
   }
@@ -321,6 +324,7 @@ function App() {
     const displayName = form.elements.fullName.value.trim();
     const country = form.elements.country.value;
     const stateRegion = country === "United States" ? (form.elements.stateRegion?.value || "") : "";
+    explicitAuthFlowRef.current = true;
     setAuthBusy(true);
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -353,6 +357,7 @@ function App() {
     } catch (error) {
       notify(authErrorMessage(error, "Account creation could not be completed. Check your connection and try again."));
     } finally {
+      explicitAuthFlowRef.current = false;
       setAuthBusy(false);
     }
   }
@@ -531,6 +536,12 @@ function App() {
         setPasswordRecoveryActive(true);
         setMfaAccessGranted(false);
         return;
+      }
+      // Email-confirmation links can create a session without a sign-in form submission.
+      // Route those sessions to the dashboard, while keeping the explicit MFA challenge flow intact.
+      if (event === "SIGNED_IN" && !explicitAuthFlowRef.current) {
+        setView("dashboard");
+        setTab("Security");
       }
       if (!session?.user) {
         setMfaAccessGranted(false);
