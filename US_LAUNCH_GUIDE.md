@@ -19,7 +19,7 @@ Not production-ready yet:
 - No contracted crypto custody/wallet, ACH/card acquiring, mobile-money, trading/execution or KYC provider is connected.
 - Deposits, withdrawals and buy/sell execution are disabled. No deposit address is generated and no money moves.
 - The ledger supports immutable double-entry posting, but no custody, payment or exchange provider is wired into server-side workflows. Financial-provider webhook verification, real settlement reconciliation and trusted portfolio snapshots are not implemented yet.
-- Support ticket creation/replies and a database-backed, reviewed fee-and-limit page are implemented. The fee schedule is currently empty rather than displaying invented fees.
+- Support ticket creation/replies and a database-backed, reviewed fee-and-limit page are implemented. Database triggers generate in-app notifications for transaction status, wallet status, profile verification status and support replies. The fee schedule is currently empty rather than displaying invented fees.
 - No investment plans are active.
 - The active Supabase project is `rqmibtetfzaiadawvnlz` in region eu-west-1 (Ireland). Review whether that data region suits a U.S. launch and your privacy commitments.
 - On 23 October 2026, the old frontend fallback `bxynrnkhnpwsbxamsxpt.supabase.co` was found to fail DNS resolution. The source and current deployed bundle now use `https://rqmibtetfzaiadawvnlz.supabase.co`; the new account/ledger/MFA schema and restrictive MFA policies have been applied there.
@@ -81,7 +81,7 @@ In Supabase Auth settings:
 2. Set the production Site URL to `https://crypto-ten-liart.vercel.app` and add `https://crypto-ten-liart.vercel.app/**` to allowed redirect URLs for this deployment. If the production domain changes, update both settings and redeploy.
 3. Configure password rules, rate limits, anti-abuse protection, session policy and recovery procedures.
 4. Make authenticator MFA mandatory for private account data if that is the selected production policy. The interface routes users to authenticator setup before showing account screens, but the database/API must independently enforce MFA. Showing an MFA screen alone is not sufficient. Sign-in now reports common email/network failures, restores existing sessions to the right account view, and supports choosing a new password after a recovery link. If login still fails on the deployed domain, inspect the Supabase Auth URL configuration and Vercel `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` values first.
-5. The restrictive MFA policies are already applied to active project `rqmibtetfzaiadawvnlz` by the checked-in migrations. Do not rerun copied `CREATE POLICY` SQL manually; duplicate policy names will fail. The latest database security-advisor check returned no findings after the balance RPC was changed to invoker rights. Re-test AAL1 and AAL2 access during release verification.
+5. The restrictive MFA policies are already applied to active project `rqmibtetfzaiadawvnlz` by the checked-in migrations. Do not rerun copied `CREATE POLICY` SQL manually; duplicate policy names will fail. The latest security advisor has no database policy/function findings after the balance RPC was changed to invoker rights. It still warns that leaked-password protection is disabled in Supabase Auth; enable that in the Auth password-security settings before customer onboarding. Re-test AAL1 and AAL2 access during release verification.
 
 The customer balance RPC is **SECURITY INVOKER**, not SECURITY DEFINER. Migration `supabase/migrations/20261023091929_balance_rpc_invoker_rls_column_grants.sql` gives signed-in users column-limited SELECT access to the ledger tables with RLS restricting access to their own customer-liability accounts and posted journals at AAL2. Anonymous execution is revoked. The RLS DDL helper's direct API EXECUTE privilege is also revoked.
 
@@ -100,7 +100,7 @@ Ask each prospective vendor to confirm in writing that it supports the company's
 
 ### Financial service readiness endpoint
 
-The deployed, JWT-protected Supabase Edge Function `financial-service-status` is called from the MFA-protected Admin workspace. It returns provider-configuration presence and explicit blockers, never API secret values. It is a preflight checklist—not a payment, custody, trade or KYC integration.
+The deployed, JWT-protected Supabase Edge Function `financial-service-status` is called from the MFA-protected Admin workspace. It returns provider-configuration presence and explicit blockers, never API secret values. It is a preflight checklist—not a payment, custody, trade or KYC integration. The code currently hard-blocks all real-money-ready results because the actual custody/deposit/withdrawal workflow, fiat settlement workflow, trade execution workflow and KYC webhook workflow are not implemented in this repository. Setting environment variables or manually toggling the sign-off flags cannot by itself mark the exchange ready.
 
 Configure these only as server-side Edge Function secrets after the company has contracted the relevant provider and actually completed legal and end-to-end tests. Never add them to `VITE_*` variables:
 
