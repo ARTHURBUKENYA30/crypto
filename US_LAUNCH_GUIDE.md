@@ -22,7 +22,7 @@ Not production-ready yet:
 - No investment plans are active.
 - The active Supabase project is `rqmibtetfzaiadawvnlz` in region eu-west-1 (Ireland). Review whether that data region suits a U.S. launch and your privacy commitments.
 - On 23 October 2026, the old frontend fallback `bxynrnkhnpwsbxamsxpt.supabase.co` was found to fail DNS resolution. The source and current deployed bundle now use `https://rqmibtetfzaiadawvnlz.supabase.co`; the new account/ledger/MFA schema and restrictive MFA policies have been applied there.
-- The U.S. state selector saves state in editable Auth user metadata; a database column for authoritative state records was not added. Do not use user-editable metadata as proof of residence, licensing eligibility, KYC or permission to move funds.
+- The U.S. state selector and profile editor save `state_region` to both Auth metadata and the user's own profile row. Those values remain customer-editable and are not proof of residence, licensing eligibility, KYC or permission to move funds. The current active project's Auth users and profiles were empty at setup; older account data was not migrated.
 - The public Vercel site at https://crypto-ten-liart.vercel.app is reachable, and its live JavaScript bundle has been checked for the latest frontend fixes. The connected Vercel management integration still cannot read deployment settings because its team scope returns an authorization error.
 
 ## 2. Step-by-step U.S. launch
