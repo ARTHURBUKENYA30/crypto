@@ -705,9 +705,9 @@ function App() {
             <div className="hero-copy">
               <span className="eyebrow"><span className="eyebrow-dot" /> CRYPTO, WITH CLARITY</span>
               <h1>Build your crypto<br className="desktop-br" /> outlook with <span>confidence.</span></h1>
-              <p className="hero-subtitle">Track digital assets, understand market moves, and keep your portfolio activity in one clear view.</p>
+              <p className="hero-subtitle">Track digital-asset prices and review your account information in one clear workspace.</p>
               <div className="hero-actions"><button className="btn btn-primary btn-lg" onClick={() => openAuth("signup")}>Create your account <Icon name="arrowRight" size={16} /></button><button className="btn btn-outline btn-lg" onClick={() => document.getElementById("markets")?.scrollIntoView({behavior:"smooth"})}>View markets <Icon name="chart" size={16} /></button></div>
-              <div className="hero-trust"><span><Icon name="shield" size={15} /> Security-first design</span><span><Icon name="globe" size={15} /> Built for global access</span></div>
+              <div className="hero-trust"><span><Icon name="shield" size={15} /> Account security controls</span><span><Icon name="chart" size={15} /> Public market data</span></div>
             </div>
             <div className="hero-visual">
               <div className="hero-orbit orbit-one" /><div className="hero-orbit orbit-two" />
@@ -728,9 +728,9 @@ function App() {
 
         <section className="trust-strip" id="features">
           <div><span className="trust-icon"><Icon name="chart" /></span><div><b>Market visibility</b><small>Prices and daily movement</small></div></div>
-          <div><span className="trust-icon"><Icon name="wallet" /></span><div><b>Portfolio tools</b><small>Track assets in one place</small></div></div>
+          <div><span className="trust-icon"><Icon name="wallet" /></span><div><b>Portfolio reporting</b><small>Only posted ledger balances</small></div></div>
           <div><span className="trust-icon"><Icon name="shield" /></span><div><b>Risk-aware by design</b><small>No guaranteed-profit claims</small></div></div>
-          <div><span className="trust-icon"><Icon name="activity" /></span><div><b>Activity overview</b><small>Clear transaction status</small></div></div>
+          <div><span className="trust-icon"><Icon name="activity" /></span><div><b>Activity records</b><small>Provider-confirmed status only</small></div></div>
         </section>
 
         <section className="market-section section-shell" id="markets">
