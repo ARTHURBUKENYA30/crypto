@@ -38,6 +38,27 @@ function changeText(value) {
   return (value > 0 ? "+" : "") + value.toFixed(2) + "%";
 }
 
+function authErrorMessage(error, fallback) {
+  const message = String(error?.message || "").trim();
+  const lower = message.toLowerCase();
+  if (lower.includes("invalid login credentials")) {
+    return "Email or password is incorrect. If you just registered, confirm your email address before signing in.";
+  }
+  if (lower.includes("email not confirmed") || lower.includes("email address not confirmed")) {
+    return "Please open the email confirmation link we sent you, then return here to sign in.";
+  }
+  if (lower.includes("user already registered")) {
+    return "An account with this email already exists. Sign in instead, or use Forgot password to recover access.";
+  }
+  if (lower.includes("failed to fetch") || lower.includes("networkerror") || lower.includes("fetch failed") || lower.includes("network request failed") || lower.includes("load failed")) {
+    return "GROEarnX could not reach its account server. Check the production Supabase URL/key and allowed redirect URLs, then retry. No account change was confirmed.";
+  }
+  if (lower.includes("rate limit") || lower.includes("too many requests")) {
+    return "Too many attempts were made. Wait a little before trying again.";
+  }
+  return message || fallback;
+}
+
 function Icon({ name, size = 18 }) {
   const common = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true };
   const paths = {
@@ -214,37 +235,69 @@ function App() {
   }
   async function signIn(e) {
     e.preventDefault();
-    if (!supabaseConfigured) { notify("Account service configuration is missing."); return; }
-    const form = e.currentTarget;
-    setAuthBusy(true);
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: form.elements.email.value.trim(),
-      password: form.elements.password.value,
-    });
-    setAuthBusy(false);
-    if (error) { notify(error.message); return; }
-    setAuthUser(data.user);
-    setMfaAccessGranted(false);
-    setProfile(p => ({ ...p, email: data.user.email || "", name: data.user.user_metadata?.display_name || "", country: data.user.user_metadata?.country || "", stateRegion: data.user.user_metadata?.state_region || "" }));
-    const factors = await supabase.auth.mfa.listFactors();
-    setMfaFactors([...(factors.data?.totp || []), ...(factors.data?.phone || [])]);
-    const verifiedTotp = factors.data?.totp?.find(factor => factor.status === "verified");
-    if (verifiedTotp) {
-      const challenge = await supabase.auth.mfa.challenge({ factorId: verifiedTotp.id });
-      if (challenge.error) { notify(challenge.error.message); return; }
-      setMfaLogin({ factorId: verifiedTotp.id, challengeId: challenge.data.id });
-      setMfaCode("");
-      setView("mfaChallenge");
-      notify("Enter the code from your authenticator app.");
+    if (!supabaseConfigured) {
+      notify("Account service configuration is missing. The site owner must configure the production Supabase URL and publishable key.");
       return;
     }
-    setView("dashboard");
-    setTab("Security");
-    notify("Set up and verify an authenticator before accessing account balances or financial features.");
+    const form = e.currentTarget;
+    setAuthBusy(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: form.elements.email.value.trim(),
+        password: form.elements.password.value,
+      });
+      if (error) {
+        notify(authErrorMessage(error, "Sign-in failed. Please try again."));
+        return;
+      }
+      if (!data?.user) {
+        notify("The account server did not return a signed-in user. Please retry.");
+        return;
+      }
+      setAuthUser(data.user);
+      setMfaAccessGranted(false);
+      setProfile(p => ({ ...p, email: data.user.email || "", name: data.user.user_metadata?.display_name || "", country: data.user.user_metadata?.country || "", stateRegion: data.user.user_metadata?.state_region || "" }));
+
+      const { data: factorData, error: factorError } = await supabase.auth.mfa.listFactors();
+      if (factorError) {
+        setView("dashboard");
+        setTab("Security");
+        notify("You signed in, but the account security status could not be checked. Refresh and try again before opening private account data.");
+        return;
+      }
+      const factors = [...(factorData?.totp || []), ...(factorData?.phone || [])];
+      setMfaFactors(factors);
+      const verifiedTotp = factorData?.totp?.find(factor => factor.status === "verified");
+      if (verifiedTotp) {
+        const challenge = await supabase.auth.mfa.challenge({ factorId: verifiedTotp.id });
+        if (challenge.error || !challenge.data?.id) {
+          setView("dashboard");
+          setTab("Security");
+          notify("You signed in, but the authenticator challenge could not be started. Open Security and retry.");
+          return;
+        }
+        setMfaLogin({ factorId: verifiedTotp.id, challengeId: challenge.data.id });
+        setMfaCode("");
+        setView("mfaChallenge");
+        notify("Enter the current code from your authenticator app.");
+        return;
+      }
+      setView("dashboard");
+      setTab("Security");
+      notify("Sign-in successful. Set up and verify an authenticator to unlock private account information.");
+    } catch (error) {
+      notify(authErrorMessage(error, "Sign-in could not be completed. Check your connection and try again."));
+    } finally {
+      setAuthBusy(false);
+    }
   }
+
   async function signUp(e) {
     e.preventDefault();
-    if (!supabaseConfigured) { notify("Account service configuration is missing."); return; }
+    if (!supabaseConfigured) {
+      notify("Account service configuration is missing. The site owner must configure the production Supabase URL and publishable key.");
+      return;
+    }
     const form = e.currentTarget;
     const email = form.elements.email.value.trim();
     const password = form.elements.password.value;
@@ -252,22 +305,38 @@ function App() {
     const country = form.elements.country.value;
     const stateRegion = country === "United States" ? (form.elements.stateRegion?.value || "") : "";
     setAuthBusy(true);
-    const { data, error } = await supabase.auth.signUp({
-      email, password,
-      options: { emailRedirectTo: window.location.origin, data: { display_name: displayName, country, state_region: stateRegion } }
-    });
-    setAuthBusy(false);
-    if (error) { notify(error.message); return; }
-    setProfile(p => ({ ...p, name: displayName, email, country, stateRegion }));
-    if (data.session && data.user) {
-      setAuthUser(data.user);
-      setMfaAccessGranted(false);
-      setView("dashboard");
-      setTab("Security");
-      notify("Your account has been created. Set up and verify an authenticator before accessing account information.");
-    } else {
-      setView("signin");
-      notify("Account created. Check your email for the verification link before signing in.");
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: window.location.origin,
+          data: { display_name: displayName, country, state_region: stateRegion },
+        },
+      });
+      if (error) {
+        notify(authErrorMessage(error, "Account creation failed. Please check your details and retry."));
+        return;
+      }
+      if (!data?.user) {
+        notify("The account server did not confirm account creation. Please retry before signing in.");
+        return;
+      }
+      setProfile(p => ({ ...p, name: displayName, email, country, stateRegion }));
+      if (data.session && data.user) {
+        setAuthUser(data.user);
+        setMfaAccessGranted(false);
+        setView("dashboard");
+        setTab("Security");
+        notify("Account created. Set up and verify an authenticator before accessing private account information.");
+      } else {
+        setView("signin");
+        notify("Account created. Check your inbox (and spam folder) for the confirmation link. Then return to sign in.");
+      }
+    } catch (error) {
+      notify(authErrorMessage(error, "Account creation could not be completed. Check your connection and try again."));
+    } finally {
+      setAuthBusy(false);
     }
   }
   async function verifyMfaLogin(e) {
@@ -386,10 +455,13 @@ function App() {
         if (!active) return;
         if (assurance?.currentLevel === "aal2") {
           setMfaAccessGranted(true);
+          setView("dashboard");
+          setTab("Overview");
         } else {
           setMfaAccessGranted(false);
           const factors = await supabase.auth.mfa.listFactors();
           if (active) setMfaFactors([...(factors.data?.totp || []), ...(factors.data?.phone || [])]);
+          setView("dashboard");
           setTab("Security");
         }
       }, 0);
@@ -566,7 +638,7 @@ function App() {
         </section>
 
         <section className="learn-section" id="learn">
-          <div className="learn-inner"><div><span className="section-kicker">LEARN BEFORE YOU MOVE</span><h2>Better information.<br /><span>More thoughtful decisions.</span></h2><p>Understand wallets, blockchain networks, volatility, and transaction fees before making a move.</p><button className="btn btn-dark" onClick={() => notify("Learning center is planned for the next build.")}>Explore learning center <Icon name="arrowRight" size={15} /></button></div><div className="learn-list"><div><span>01</span><div><b>Start with the basics</b><small>Crypto, wallets, and the blockchain in plain English.</small></div><Icon name="arrowRight" /></div><div><span>02</span><div><b>Understand risk</b><small>Volatility, fees, scams, and common warning signs.</small></div><Icon name="arrowRight" /></div><div><span>03</span><div><b>Know the network</b><small>Choose the right network and verify every address.</small></div><Icon name="arrowRight" /></div></div></div>
+          <div className="learn-inner"><div><span className="section-kicker">LEARN BEFORE YOU MOVE</span><h2>Better information.<br /><span>More thoughtful decisions.</span></h2><p>Understand wallets, blockchain networks, volatility, and transaction fees before making a move.</p><button className="btn btn-dark" onClick={() => document.querySelector(".learn-list")?.scrollIntoView({ behavior: "smooth", block: "center" })}>Explore learning topics <Icon name="arrowRight" size={15} /></button></div><div className="learn-list"><div><span>01</span><div><b>Start with the basics</b><small>Crypto, wallets, and the blockchain in plain English.</small></div><Icon name="arrowRight" /></div><div><span>02</span><div><b>Understand risk</b><small>Volatility, fees, scams, and common warning signs.</small></div><Icon name="arrowRight" /></div><div><span>03</span><div><b>Know the network</b><small>Choose the right network and verify every address.</small></div><Icon name="arrowRight" /></div></div></div>
         </section>
         <section className="faq-section" id="faq"><div className="faq-inner"><div className="faq-intro"><span className="section-kicker">HELP CENTER</span><h2>Questions, answered.</h2><p>Key information about GROEarnX, digital-asset risks and supported services.</p><div className="faq-contact"><b>Need help with your account?</b><a href={WHATSAPP_URL} target="_blank" rel="noreferrer">WhatsApp support <Icon name="external" size={13}/></a><a href={"tel:"+CONTACT_PHONE}>Call {CONTACT_PHONE}</a></div></div><div className="faq-list">
           <details><summary>Which digital assets are supported?</summary><p>The website provides market information for Bitcoin (BTC), Ethereum (ETH), Tether (USDT), and additional assets when returned by the public market-data feed. Financial transfers are not enabled until the required custody and payment providers are connected.</p></details>
@@ -652,7 +724,7 @@ function App() {
             <label>Email address<input type="email" name="email" autoComplete="email" placeholder="you@example.com" required onChange={e => !isSignup && setProfile(p => ({ ...p, email: e.target.value }))} /></label>
             <label>Password<div className="password-wrap"><input type="password" name="password" autoComplete={isSignup ? "new-password" : "current-password"} minLength={8} placeholder={isSignup ? "At least 8 characters" : "Enter password"} required /><Icon name="lock" size={16} /></div></label>
             {isSignup && <div className="identity-verification-notice"><div className="identity-notice-heading"><span><Icon name="shield" size={16} /></span><div><b>Identity verification</b><small>Verification after account creation</small></div><span className="badge-muted">Required later</span></div><p>For your protection, identity documents and ID numbers are collected only through an approved secure verification provider. Do not enter them into this form.</p></div>}
-            {!isSignup && <div className="auth-options"><label className="check-row"><input type="checkbox" /> <span>Remember this device</span></label><button type="button" className="text-link" onClick={resetPassword}>Forgot password?</button></div>}
+            {!isSignup && <div className="auth-options"><span className="auth-session-note">Your session stays on this browser until you sign out.</span><button type="button" className="text-link" onClick={resetPassword}>Forgot password?</button></div>}
             {isSignup && <label className="check-row terms-check"><input type="checkbox" required /> <span>I agree to the Terms of Service, Privacy Policy and Risk Disclosure.</span></label>}
             <button className="btn btn-primary auth-submit" type="submit" disabled={authBusy || !supabaseConfigured}>{authBusy ? "Please wait…" : isSignup ? "Create account" : "Sign in"} <Icon name="arrowRight" size={16} /></button>
           </form>
