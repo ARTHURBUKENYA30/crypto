@@ -116,14 +116,24 @@ Deno.serve(async (req: Request) => {
     const operatorEnabled = Deno.env.get("FINANCIAL_SERVICES_ENABLED") === "true";
     const commonGate = legalApproved && sandboxValidated && liveValidated && operatorEnabled && kycConfigured;
 
+    // Fail closed until the actual signed-webhook and settlement handlers are implemented.
+    // Configuration variables and operator sign-off alone must never indicate a live exchange.
+    const workflowImplemented = {
+      cryptoCustodyAndPayouts: false,
+      fiatSettlement: false,
+      tradeExecution: false,
+      identityVerification: false,
+    };
+
     const services = [
       {
         id: "crypto_funding",
         title: "Crypto custody, deposit addresses and withdrawals",
         providerConfigurationPresent: custodyConfigured,
-        readyForRealMoney: Boolean(commonGate && custodyConfigured && monitoringConfigured),
+        readyForRealMoney: Boolean(commonGate && custodyConfigured && monitoringConfigured && workflowImplemented.cryptoCustodyAndPayouts),
         blockers: [
           ...(!custodyConfigured ? ["Custody provider API/account/webhook secrets are missing."] : []),
+          ...(!workflowImplemented.cryptoCustodyAndPayouts ? ["Secure deposit-address provisioning, signed custody webhooks, withdrawal approval and settlement/reconciliation workflows are not implemented yet."] : []),
           ...(!monitoringConfigured ? ["Blockchain monitoring provider is not configured."] : []),
           ...(!kycConfigured ? ["Identity verification provider is not configured."] : []),
           ...(!legalApproved ? ["Regulatory approval has not been confirmed by the operator."] : []),
@@ -136,9 +146,10 @@ Deno.serve(async (req: Request) => {
         id: "fiat_funding",
         title: "USD bank/card deposits and bank withdrawals",
         providerConfigurationPresent: fiatConfigured,
-        readyForRealMoney: Boolean(commonGate && fiatConfigured && monitoringConfigured),
+        readyForRealMoney: Boolean(commonGate && fiatConfigured && monitoringConfigured && workflowImplemented.fiatSettlement),
         blockers: [
           ...(!fiatConfigured ? ["A contracted fiat/payment provider and signed webhook secret are missing."] : []),
+          ...(!workflowImplemented.fiatSettlement ? ["Hosted checkout, verified payment webhooks, refund/chargeback handling and bank-settlement reconciliation are not implemented yet."] : []),
           ...(!monitoringConfigured ? ["Transaction-monitoring provider is not configured."] : []),
           ...(!kycConfigured ? ["Identity verification provider is not configured."] : []),
           ...(!legalApproved ? ["Regulatory approval has not been confirmed by the operator."] : []),
@@ -151,9 +162,10 @@ Deno.serve(async (req: Request) => {
         id: "trading",
         title: "Buy, sell and exchange order execution",
         providerConfigurationPresent: tradingConfigured,
-        readyForRealMoney: Boolean(commonGate && tradingConfigured && custodyConfigured && monitoringConfigured),
+        readyForRealMoney: Boolean(commonGate && tradingConfigured && custodyConfigured && monitoringConfigured && workflowImplemented.tradeExecution),
         blockers: [
           ...(!tradingConfigured ? ["A contracted trading/execution API and account are missing."] : []),
+          ...(!workflowImplemented.tradeExecution ? ["Server-side order submission, fill/cancel handling, idempotency and order-to-ledger reconciliation are not implemented yet."] : []),
           ...(!custodyConfigured ? ["Custody and customer-funds reconciliation are not configured."] : []),
           ...(!monitoringConfigured ? ["Transaction-monitoring provider is not configured."] : []),
           ...(!kycConfigured ? ["Identity verification provider is not configured."] : []),
@@ -167,9 +179,10 @@ Deno.serve(async (req: Request) => {
         id: "identity_verification",
         title: "Identity verification / KYC",
         providerConfigurationPresent: kycConfigured,
-        readyForRealMoney: Boolean(kycConfigured && sandboxValidated && legalApproved && liveValidated && operatorEnabled),
+        readyForRealMoney: Boolean(kycConfigured && sandboxValidated && legalApproved && liveValidated && operatorEnabled && workflowImplemented.identityVerification),
         blockers: [
           ...(!kycConfigured ? ["KYC provider credentials and verified webhook secret are missing."] : []),
+          ...(!workflowImplemented.identityVerification ? ["Secure KYC session creation and verified result-webhook processing are not implemented yet."] : []),
           ...(!sandboxValidated ? ["Identity-provider sandbox tests have not been signed off."] : []),
           ...(!liveValidated ? ["Production verification webhook tests have not been signed off."] : []),
           ...(!legalApproved ? ["Regulatory approval has not been confirmed by the operator."] : []),
@@ -189,9 +202,10 @@ Deno.serve(async (req: Request) => {
         liveValidated,
         operatorEnabled,
         monitoringConfigured,
+        workflowImplemented,
       },
       services,
-      note: "This endpoint checks configuration and operator sign-offs only; it does not verify provider uptime or replace a successful live transaction and reconciliation test.",
+      note: "This endpoint checks configuration and operator sign-offs only; workflowImplemented is deliberately false until the actual server-side provider/webhook/reconciliation code exists. It does not verify provider uptime or replace successful end-to-end tests.",
     }, 200, origin);
   } catch {
     return jsonResponse({ error: "readiness_check_failed" }, 500, origin);
