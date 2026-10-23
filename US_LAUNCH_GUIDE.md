@@ -22,7 +22,7 @@ Not production-ready yet:
 - No investment plans are active.
 - The connected Supabase project currently reports region eu-west-2 (UK). Review whether this is suitable for a U.S. launch and your data/privacy commitments.
 - The U.S. state selector saves state in editable Auth user metadata; a database column for authoritative state records was not added. Do not use user-editable metadata as proof of residence, licensing eligibility, KYC or permission to move funds.
-- A public Vercel deployment has not been confirmed because the connected Vercel account returned a team authorization error.
+- The public Vercel site at https://crypto-ten-liart.vercel.app is reachable, and its live JavaScript bundle has been checked for the latest frontend fixes. The connected Vercel management integration still cannot read deployment settings because its team scope returns an authorization error.
 
 ## 2. Step-by-step U.S. launch
 
@@ -192,7 +192,7 @@ Before launch, sign off on:
 
 ### Step 11 — Deploy to Vercel
 
-A public Vercel deployment was not confirmed because the connected Vercel account returned a 403 team authorization error for team bukenya-arthurs-projects.
+The public domain https://crypto-ten-liart.vercel.app is reachable. The connected Vercel management account still returns a 403 authorization error for team bukenya-arthurs-projects, so deployment settings and environment variables could not be inspected from this session. Open the project in the Vercel account that owns it to verify the production environment and Git source.
 
 1. Open the Vercel connection authorization flow and grant access to the team that owns the project. If this is not the intended account, use your own authorized Vercel account to import the repository.
 2. In Vercel select Add New → Project and import [ARTHURBUKENYA30/crypto](https://github.com/ARTHURBUKENYA30/crypto). Select Vite if it is not detected.
