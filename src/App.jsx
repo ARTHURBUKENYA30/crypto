@@ -607,11 +607,11 @@ function App() {
         supabase.from("wallets").select("id,asset_code,network,deposit_address,provider_name,address_status,created_at").eq("user_id",authUser.id).order("created_at",{ascending:false}).limit(50),
         supabase.from("portfolio_snapshots").select("id,total_value_usd,captured_at,source").eq("user_id",authUser.id).order("captured_at",{ascending:false}).limit(90),
         supabase.from("notifications").select("id,category,title,body,read_at,created_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(50),
-        supabase.from("investment_plans").select("id,name,description,asset_code,minimum_amount,maximum_amount,term_days,target_return_apr,return_type,fees_disclosure,risk_disclosure,terms_url").eq("status","active").eq("legally_reviewed",true),
+        supabase.from("investment_plans").select("id,name,description,asset_code,minimum_amount,maximum_amount,term_days,target_return_apr,return_type,fees_disclosure,risk_disclosure,terms_url").eq("active",true).eq("legally_reviewed",true),
         supabase.auth.mfa.listFactors(),
       ]);
       if (!active) return;
-      if (p.data) setProfile(prev => ({ ...prev, name: p.data.display_name || prev.name, country: p.data.country || prev.country, phone: p.data.phone || "", kycStatus: p.data.kyc_status || "not_started" }));
+      if (p.data) setProfile(prev => ({ ...prev, name: p.data.display_name || prev.name, country: p.data.country || prev.country, stateRegion: p.data.state_region || prev.stateRegion, phone: p.data.phone || "", kycStatus: p.data.kyc_status || "not_started" }));
       if (tx.data) setTransactions(tx.data.map(t => ({ id:t.id, type:t.request_type.replaceAll("_"," "), asset:t.asset_code, amount:Number(t.amount), unit:t.asset_code, date:new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"2-digit",year:"numeric"}), status:t.status })));
       if (balance.data) setWalletBalances(Object.fromEntries(balance.data.map(b => [b.asset_code, Number(b.balance)])));
       if (walletResult.data) setWallets(walletResult.data);
