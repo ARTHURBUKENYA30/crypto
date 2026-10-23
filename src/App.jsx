@@ -167,6 +167,8 @@ function App() {
     }
   });
   const [transactions, setTransactions] = useState([]);
+  const [supportTickets, setSupportTickets] = useState([]);
+  const [supportBusy, setSupportBusy] = useState(false);
   const [profile, setProfile] = useState({ name: "", email: "", country: "", stateRegion: "", phone: "", kycStatus: "not_started" });
 
   useEffect(() => {
@@ -468,6 +470,72 @@ function App() {
     if (error) { notify(error.message); return; }
     setNotifications(items => items.map(item => item.id === notificationId ? { ...item, read_at: new Date().toISOString() } : item));
   }
+  async function submitSupportTicket(e) {
+    e.preventDefault();
+    if (!authUser || !mfaAccessGranted) {
+      notify("Verify your authenticator before contacting account support.");
+      return;
+    }
+    const form = e.currentTarget;
+    const payload = {
+      user_id: authUser.id,
+      category: form.elements.category.value,
+      subject: form.elements.subject.value.trim(),
+      message: form.elements.message.value.trim(),
+    };
+    if (payload.subject.length < 4 || payload.message.length < 10) {
+      notify("Enter a subject of at least 4 characters and a message of at least 10 characters.");
+      return;
+    }
+    setSupportBusy(true);
+    try {
+      const { data, error } = await supabase.from("support_tickets")
+        .insert(payload)
+        .select("id,user_id,category,subject,message,status,admin_response,created_at,updated_at")
+        .single();
+      if (error) {
+        notify(authErrorMessage(error, "Your support request could not be saved. Please retry."));
+        return;
+      }
+      if (data) setSupportTickets(items => [data, ...items.filter(item => item.id !== data.id)].slice(0, 100));
+      form.reset();
+      notify("Support request saved. You can track its status below.");
+    } catch (error) {
+      notify(authErrorMessage(error, "Your support request could not be saved. Please retry."));
+    } finally {
+      setSupportBusy(false);
+    }
+  }
+
+  async function updateSupportTicket(ticketId, e) {
+    e.preventDefault();
+    if (!isAdmin || !mfaAccessGranted) {
+      notify("Administrator access with verified MFA is required.");
+      return;
+    }
+    const form = e.currentTarget;
+    const status = form.elements.status.value;
+    const adminResponse = form.elements.adminResponse.value.trim();
+    setSupportBusy(true);
+    try {
+      const { data, error } = await supabase.from("support_tickets")
+        .update({ status, admin_response: adminResponse || null, resolved_at: ["resolved", "closed"].includes(status) ? new Date().toISOString() : null })
+        .eq("id", ticketId)
+        .select("id,user_id,category,subject,message,status,admin_response,created_at,updated_at")
+        .single();
+      if (error) {
+        notify(authErrorMessage(error, "The support ticket could not be updated."));
+        return;
+      }
+      setSupportTickets(items => items.map(item => item.id === ticketId ? data : item));
+      notify("Support ticket updated.");
+    } catch (error) {
+      notify(authErrorMessage(error, "The support ticket could not be updated."));
+    } finally {
+      setSupportBusy(false);
+    }
+  }
+
   async function saveProfile(e) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -610,7 +678,9 @@ function App() {
         supabase.from("investment_plans").select("id,name,description,asset_code,minimum_amount,maximum_amount,term_days,target_return_apr,return_type,fees_disclosure,risk_disclosure,terms_url").eq("active",true).eq("legally_reviewed",true),
         supabase.auth.mfa.listFactors(),
       ]);
+      const ticketResult = await supabase.from("support_tickets").select("id,user_id,category,subject,message,status,admin_response,created_at,updated_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(50);
       if (!active) return;
+      if (ticketResult.data) setSupportTickets(ticketResult.data);
       if (p.data) setProfile(prev => ({ ...prev, name: p.data.display_name || prev.name, country: p.data.country || prev.country, stateRegion: p.data.state_region || prev.stateRegion, phone: p.data.phone || "", kycStatus: p.data.kyc_status || "not_started" }));
       if (tx.data) setTransactions(tx.data.map(t => ({ id:t.id, type:t.request_type.replaceAll("_"," "), asset:t.asset_code, amount:Number(t.amount), unit:t.asset_code, date:new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"2-digit",year:"numeric"}), status:t.status })));
       if (balance.data) setWalletBalances(Object.fromEntries(balance.data.map(b => [b.asset_code, Number(b.balance)])));
@@ -629,10 +699,12 @@ function App() {
     Promise.all([
       supabase.from("transaction_requests").select("id,user_id,request_type,asset_code,amount,status,created_at").order("created_at", { ascending: false }).limit(100),
       supabase.from("profiles").select("id", { count: "exact", head: true }),
-    ]).then(([requestResult, userResult]) => {
+      supabase.from("support_tickets").select("id,user_id,category,subject,message,status,admin_response,created_at,updated_at").order("created_at", { ascending: false }).limit(100),
+    ]).then(([requestResult, userResult, ticketResult]) => {
       if (!active) return;
       if (requestResult.data) setAdminRequests(requestResult.data);
       if (!userResult.error) setAdminUserCount(userResult.count ?? null);
+      if (ticketResult.data) setSupportTickets(ticketResult.data);
     }).catch(() => { if (active) notify("The admin queue could not be loaded. Check the assigned admin role and database policies."); });
     return () => { active = false; };
   }, [authUser, mfaAccessGranted, isAdmin, tab]);
@@ -903,7 +975,7 @@ function App() {
   }
 
   function renderDashboard() {
-    const nav = [{ label: "Overview", icon: "grid" }, { label: "Wallets", icon: "wallet" }, { label: "Trade", icon: "chart" }, { label: "Portfolio", icon: "wallet" }, { label: "Markets", icon: "chart" }, { label: "Activity", icon: "activity" }, { label: "Investment Plans", icon: "chart" }, { label: "Notifications", icon: "bell" }, { label: "Verification", icon: "shield" }, { label: "Security", icon: "lock" }, { label: "Profile", icon: "user" }, ...(isAdmin ? [{ label: "Admin", icon: "settings" }] : [])];
+    const nav = [{ label: "Overview", icon: "grid" }, { label: "Wallets", icon: "wallet" }, { label: "Trade", icon: "chart" }, { label: "Portfolio", icon: "wallet" }, { label: "Markets", icon: "chart" }, { label: "Activity", icon: "activity" }, { label: "Investment Plans", icon: "chart" }, { label: "Notifications", icon: "bell" }, { label: "Support", icon: "info" }, { label: "Verification", icon: "shield" }, { label: "Security", icon: "lock" }, { label: "Profile", icon: "user" }, ...(isAdmin ? [{ label: "Admin", icon: "settings" }] : [])];
     return <div className="dashboard-layout">
       <aside className={"sidebar " + (menuOpen ? "sidebar-open" : "")}><div className="sidebar-brand"><Brand onClick={() => setView("home")} /></div><div className="sidebar-caption">WORKSPACE</div><nav className="sidebar-nav">{nav.map(item => <button className={tab === item.label ? "selected" : ""} key={item.label} onClick={() => dashboardNav(item.label)}><Icon name={item.icon} size={18} />{item.label}{item.label === "Verification" && profile.kycStatus !== "verified" && <span className="nav-count">!</span>}{item.label === "Notifications" && notifications.some(n=>!n.read_at) && <span className="nav-count">{notifications.filter(n=>!n.read_at).length}</span>}</button>)}</nav><div className="sidebar-bottom"><div className="support-card"><span className="support-icon"><Icon name="shield" /></span><b>Need a hand?</b><small>Talk to the GROEarnX support team.</small><a href={WHATSAPP_URL} target="_blank" rel="noreferrer">Contact support <Icon name="arrowRight" size={13} /></a></div><button className="sidebar-home" onClick={() => setView("home")}><Icon name="arrowRight" size={15} /> Back to website</button><div className="sidebar-member"><span className="member-avatar">{memberInitials}</span><span><b>{memberName}</b><small>{authUser?.email || "Verified account"}</small></span><button title="Sign out" onClick={signOut}><Icon name="external" size={14}/></button></div></div></aside>
       <main className="dashboard-main"><header className="dashboard-topbar"><button className="mobile-menu dash-menu" onClick={() => setMenuOpen(v => !v)} aria-label="Toggle dashboard menu"><Icon name="menu" /></button><div className="breadcrumbs">Workspace <span>/</span> <b>{tab}</b></div><div className="dashboard-top-actions"><span className="account-status-chip"><span className="status-dot" /> {mfaAccessGranted ? "SECURE ACCESS" : "SECURITY SETUP REQUIRED"}</span><button className="icon-button" aria-label="Notifications" onClick={() => setTab("Notifications")}><Icon name="bell" /></button><span className="top-avatar">{memberInitials}</span></div></header>
@@ -936,6 +1008,27 @@ function App() {
           {tab === "Investment Plans" && <section className="panel-card route-panel plans-page"><div className="panel-heading"><div><h2>Investment plans</h2><p>Only legally reviewed plans approved by the operator are shown here.</p></div><span className="status-label status-pending">Availability subject to authorization</span></div>
             {investmentPlans.length===0 ? <div className="empty-state"><Icon name="info" size={25}/><b>No investment plans are currently available.</b><span>Plans will appear only after their terms, fees, risks, eligibility and regulatory approvals have been reviewed and activated.</span></div> : <div className="plan-grid">{investmentPlans.map(plan=><article className="plan-card" key={plan.id}><div className="plan-card-head"><span className="plan-asset">{plan.asset_code}</span><span className="status-label status-ok">Available</span></div><h3>{plan.name}</h3><p>{plan.description}</p><div className="plan-stats"><span>Minimum<b>{shortNumber(Number(plan.minimum_amount),8)} {plan.asset_code}</b></span><span>Term<b>{plan.term_days ? plan.term_days+" days" : "Flexible"}</b></span><span>Return disclosure<b>{plan.return_type==="none"?"No return offered":plan.return_type==="variable"?"Variable; not guaranteed":"See full plan terms"}</b></span></div><details><summary>Fees and risk disclosures</summary><p>{plan.fees_disclosure}</p><p>{plan.risk_disclosure}</p>{plan.terms_url && <a href={plan.terms_url} target="_blank" rel="noreferrer">Plan terms <Icon name="external" size={12}/></a>}</details></article>)}</div>}
           </section>}
+          {tab === "Support" && <section className="panel-card route-panel support-page">
+            <div className="panel-heading"><div><h2>Support centre</h2><p>Send an account support request and track its status from this page.</p></div><span className="status-label status-neutral">{supportTickets.length} saved tickets</span></div>
+            <div className="support-page-grid">
+              <form className="support-ticket-form" onSubmit={submitSupportTicket}>
+                <div className="support-form-heading"><span className="metric-icon"><Icon name="info" /></span><div><h3>New support request</h3><p>Do not include passwords, recovery phrases, one-time codes or full identity documents.</p></div></div>
+                <label>Request category<select name="category" defaultValue="general" required><option value="general">General question</option><option value="account">Account / login</option><option value="security">Security</option><option value="deposit">Deposit</option><option value="withdrawal">Withdrawal</option><option value="trading">Trading</option><option value="verification">Identity verification</option></select></label>
+                <label>Subject<input name="subject" minLength={4} maxLength={160} placeholder="What do you need help with?" required /></label>
+                <label>Message<textarea name="message" minLength={10} maxLength={5000} rows={5} placeholder="Describe the issue and what you have already tried." required /></label>
+                <button className="btn btn-primary auth-submit" type="submit" disabled={supportBusy || !mfaAccessGranted}>{supportBusy ? "Saving request…" : "Submit support request"} <Icon name="arrowRight" size={15}/></button>
+                <small className="field-help">Requests are stored against your signed-in account. Status changes only come from administrator actions.</small>
+              </form>
+              <div className="support-ticket-list">
+                <div className="support-list-heading"><div><h3>Your support requests</h3><p>Most recent first</p></div><a href={WHATSAPP_URL} target="_blank" rel="noreferrer" className="text-link">WhatsApp support <Icon name="external" size={12}/></a></div>
+                {supportTickets.filter(t => t.user_id === authUser?.id).length === 0 ? <div className="empty-state"><Icon name="info" size={23}/><b>No support requests yet.</b><span>Submit a request on the left. Your saved messages and support responses will appear here.</span></div> : supportTickets.filter(t => t.user_id === authUser?.id).map(ticket => <article className="support-ticket-card" key={ticket.id}>
+                  <div className="support-ticket-meta"><span className="support-ticket-category">{ticket.category.replaceAll("_"," ")}</span><span className={"status-label "+(["resolved","closed"].includes(ticket.status)?"status-ok":"status-pending")}>{ticket.status.replaceAll("_"," ")}</span></div>
+                  <h4>{ticket.subject}</h4><p>{ticket.message}</p><small>Opened {new Date(ticket.created_at).toLocaleString("en-US",{dateStyle:"medium",timeStyle:"short"})}</small>
+                  {ticket.admin_response && <div className="support-response"><b>GROEarnX response</b><p>{ticket.admin_response}</p></div>}
+                </article>)}
+              </div>
+            </div>
+          </section>}
           {tab === "Notifications" && <section className="panel-card route-panel notifications-page"><div className="panel-heading"><div><h2>Notifications</h2><p>Account, security and transaction notices delivered to your account.</p></div><span className="status-label status-neutral">{notifications.filter(n=>!n.read_at).length} unread</span></div>
             {notifications.length===0 ? <div className="empty-state"><Icon name="bell" size={25}/><b>No notifications yet.</b><span>Security and transaction notifications will appear here when generated by the account service.</span></div> : <div className="notification-list">{notifications.map(n=><article className={"notification-item "+(!n.read_at?"unread":"")} key={n.id}><span className="notification-icon"><Icon name={n.category==="security"?"shield":n.category==="transaction"?"activity":"bell"} size={17}/></span><div className="notification-body"><div className="notification-title-row"><b>{n.title}</b><time>{new Date(n.created_at).toLocaleString("en-US",{dateStyle:"medium",timeStyle:"short"})}</time></div><p>{n.body}</p><small>{n.category}</small></div>{!n.read_at && <button className="text-link" onClick={()=>markNotificationRead(n.id)}>Mark read</button>}</article>)}</div>}
           </section>}
@@ -947,7 +1040,14 @@ function App() {
           </section>}
           {tab === "Verification" && <section className="panel-card route-panel verification-page"><div className="panel-heading"><div><h2>Identity verification</h2><p>Secure verification must be completed through an approved KYC provider when required.</p></div><span className={"status-label "+(profile.kycStatus==="verified"?"status-ok":"status-pending")}><i/>{profile.kycStatus==="verified"?"Verified":profile.kycStatus==="pending"?"In review":"Not verified"}</span></div><div className="verification-steps"><div className="verification-step"><span>01</span><div><b>Country / region</b><p>{profile.country || "Add your country in profile settings."}</p></div><span className="status-label status-ok">{profile.country?"Provided":"Required"}</span></div><div className="verification-step"><span>02</span><div><b>National ID or driving permit</b><p>Submit documents only through the secure identity provider when that integration is available. Do not send ID images over chat.</p></div><span className="status-label status-pending">Provider required</span></div><div className="verification-step"><span>03</span><div><b>Review and approval</b><p>Account limits and regulated features depend on the verified result.</p></div><span className={"status-label "+(profile.kycStatus==="verified"?"status-ok":"status-pending")}>{profile.kycStatus.replaceAll("_"," ")}</span></div></div><button className="btn btn-outline" onClick={() => setTab("Profile")}>Review profile <Icon name="arrowRight" size={14}/></button></section>}
           {tab === "Profile" && <section className="panel-card route-panel profile-page"><div className="panel-heading"><div><h2>Profile &amp; preferences</h2><p>Update your contact and region information.</p></div><span className="status-label status-ok">Authenticated</span></div><form className="profile-edit-form" onSubmit={saveProfile}><label>Display name<input name="displayName" value={profile.name} onChange={e=>setProfile(p=>({...p,name:e.target.value}))} required maxLength={100}/></label><label>Email address<input value={profile.email} readOnly disabled/></label><label>Country / region<select name="country" value={profile.country} onChange={e=>setProfile(p=>({...p,country:e.target.value,stateRegion:e.target.value==="United States"?p.stateRegion:""}))} required><option value="">Choose your country</option>{COUNTRIES.map(country=><option key={country}>{country}</option>)}</select></label>{profile.country==="United States" && <label>State / territory<select name="stateRegion" value={profile.stateRegion||""} onChange={e=>setProfile(p=>({...p,stateRegion:e.target.value}))} required><option value="">Choose your state</option>{US_STATES.map(state=><option key={state}>{state}</option>)}</select></label>}<label>Phone number<input name="phone" value={profile.phone||""} onChange={e=>setProfile(p=>({...p,phone:e.target.value}))} autoComplete="tel" maxLength={40} placeholder="+1…"/></label><button className="btn btn-primary" type="submit">Save profile <Icon name="check" size={15}/></button></form><div className="profile-grid"><div className="profile-field"><span>Identity verification</span><b>{profile.kycStatus==="verified"?"Verified":"Not verified"}</b></div><div className="profile-field"><span>Account status</span><b>Authenticated</b></div></div><div className="activity-note"><Icon name="shield" size={16}/> National ID and driving-permit details belong in the secure KYC provider flow, not ordinary profile fields.</div></section>}
-          {tab === "Admin" && isAdmin && <section className="panel-card route-panel admin-page"><div className="panel-heading"><div><h2>Administration</h2><p>Read-only operational view. Use server-side admin functions for approvals and provider actions.</p></div><span className="status-label status-ok">Restricted access</span></div><div className="admin-summary-grid"><div><small>Registered profiles</small><b>{adminUserCount===null?"—":adminUserCount}</b></div><div><small>Requests listed</small><b>{adminRequests.length}</b></div><div><small>Needs review</small><b>{adminRequests.filter(x=>["submitted","under_review","awaiting_payment"].includes(x.status)).length}</b></div></div><div className="table-wrap"><table className="market-table"><thead><tr><th>Request ID</th><th>User</th><th>Type</th><th>Asset</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody>{adminRequests.map(r=><tr key={r.id}><td>{r.id.slice(0,8)}</td><td>{r.user_id.slice(0,8)}…</td><td>{r.request_type.replaceAll("_"," ")}</td><td>{r.asset_code}</td><td>{shortNumber(Number(r.amount),8)}</td><td><span className="status-label status-pending">{r.status.replaceAll("_"," ")}</span></td><td>{new Date(r.created_at).toLocaleDateString("en-US")}</td></tr>)}</tbody></table>{adminRequests.length===0 && <div className="empty-state"><b>No transaction requests found.</b></div>}</div><div className="activity-note"><Icon name="shield" size={16}/> Admin role must be granted by a trusted server/admin operator in Supabase app metadata. Never set admin access from a public signup form or user-editable metadata.</div></section>}
+          {tab === "Admin" && isAdmin && <section className="panel-card route-panel admin-page"><div className="panel-heading"><div><h2>Administration</h2><p>Read-only operational view. Use server-side admin functions for approvals and provider actions.</p></div><span className="status-label status-ok">Restricted access</span></div><div className="admin-summary-grid"><div><small>Registered profiles</small><b>{adminUserCount===null?"—":adminUserCount}</b></div><div><small>Requests listed</small><b>{adminRequests.length}</b></div><div><small>Needs review</small><b>{adminRequests.filter(x=>["pending","under_review","processing"].includes(x.status)).length}</b></div></div><div className="table-wrap"><table className="market-table"><thead><tr><th>Request ID</th><th>User</th><th>Type</th><th>Asset</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody>{adminRequests.map(r=><tr key={r.id}><td>{r.id.slice(0,8)}</td><td>{r.user_id.slice(0,8)}…</td><td>{r.request_type.replaceAll("_"," ")}</td><td>{r.asset_code}</td><td>{shortNumber(Number(r.amount),8)}</td><td><span className="status-label status-pending">{r.status.replaceAll("_"," ")}</span></td><td>{new Date(r.created_at).toLocaleDateString("en-US")}</td></tr>)}</tbody></table>{adminRequests.length===0 && <div className="empty-state"><b>No transaction requests found.</b></div>}</div><section className="admin-support-inbox"><div className="panel-heading"><div><h3>Customer support inbox</h3><p>Review customer tickets and record an auditable response/status.</p></div><span className="status-label status-neutral">{supportTickets.length} tickets</span></div>
+            {supportTickets.length===0 ? <div className="empty-state"><Icon name="info" size={23}/><b>No customer support tickets yet.</b><span>Tickets submitted by authenticated customers will appear here.</span></div> : <div className="admin-support-list">{supportTickets.map(ticket=><form className="admin-ticket-card" key={ticket.id} onSubmit={e=>updateSupportTicket(ticket.id,e)}>
+              <div className="admin-ticket-head"><div><span className="support-ticket-category">{ticket.category.replaceAll("_"," ")}</span><h4>{ticket.subject}</h4><small>User {ticket.user_id.slice(0,8)}… · {new Date(ticket.created_at).toLocaleString("en-US",{dateStyle:"medium",timeStyle:"short"})}</small></div><span className={"status-label "+(["resolved","closed"].includes(ticket.status)?"status-ok":"status-pending")}>{ticket.status.replaceAll("_"," ")}</span></div>
+              <p className="admin-ticket-message">{ticket.message}</p>
+              <label>Response<textarea name="adminResponse" defaultValue={ticket.admin_response || ""} maxLength={5000} rows={3} placeholder="Write a response for the customer…" /></label>
+              <div className="admin-ticket-actions"><label>Status<select name="status" defaultValue={ticket.status}><option value="open">Open</option><option value="in_progress">In progress</option><option value="waiting_on_customer">Waiting on customer</option><option value="resolved">Resolved</option><option value="closed">Closed</option></select></label><button className="btn btn-primary btn-sm" type="submit" disabled={supportBusy}>{supportBusy?"Saving…":"Save response"}</button></div>
+            </form>)}</div>}
+          </section><div className="activity-note"><Icon name="shield" size={16}/> Admin role must be granted by a trusted server/admin operator in Supabase app metadata. Never set admin access from a public signup form or user-editable metadata.</div></section>}
           <div className="dashboard-disclaimer">GROEarnX financial services become available only after the relevant custody, exchange and payment providers are configured.</div>
         </div>
       </main>
@@ -990,6 +1090,7 @@ function App() {
       "Activity": "Review transaction requests and settlement status from your account.",
       "Investment Plans": "Review active plans and their risk and fee disclosures.",
       "Notifications": "Review account, security and transaction notices.",
+      "Support": "Create a support ticket and track responses from the GROEarnX team.",
       "Security": "Manage authenticator-based two-factor authentication.",
       "Verification": "Check the current status of identity verification.",
       "Profile": "Update your name, country and contact information.",
