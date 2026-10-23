@@ -11,14 +11,17 @@ GROEarnX is a React/Vite crypto-market interface with a Supabase-backed account 
 - **Markets:** Public CoinGecko quotes may load when the provider is available. Quotes are market information, not exchange execution.
 - **Custody, payments, KYC, exchange orders, notifications and admin operations:** Database foundations exist for some records, but the required provider integrations and end-to-end operational workflows are not yet complete. Do not accept customer funds or advertise live trading/investment services yet.
 - **Investment plans:** No plan or return is enabled by default. Never advertise a return as guaranteed.
+- **Login recovery and session behavior:** The frontend now handles network exceptions without leaving sign-in/loading states stuck, restores valid sessions to the account view, routes email-confirmed sessions to security setup, and provides a password-reset completion screen. These code fixes do not replace the Supabase production URL, key, email-delivery or redirect configuration.
+- **Watchlist:** Market watchlist selections persist in the current browser only; they are not synced between devices or stored in the user account.
 
 ## Configure real account authentication
 
-1. In Supabase project **crypto** (project ref `bxynrnkhnpwsbxamsxpt`), review Auth settings. Enable email confirmation, set allowed redirect URLs, configure password-reset email templates, rate limits, abuse protection and MFA policy.
-2. Copy `.env.example` to `.env.local`.
-3. Set `VITE_SUPABASE_URL` to your Supabase project URL and `VITE_SUPABASE_PUBLISHABLE_KEY` to its publishable key. Never use a service-role/secret key in a Vite client.
-4. Set the same two variables in the production hosting environment and redeploy.
-5. Run `npm install`, `npm run build`, then `npm run dev`.
+1. In Supabase project **crypto** (project ref `bxynrnkhnpwsbxamsxpt`), open Authentication → URL Configuration. Set **Site URL** to `https://crypto-ten-liart.vercel.app` and add `https://crypto-ten-liart.vercel.app/**` to the allowed Redirect URLs. Signup confirmation and password recovery redirect to the current site origin, so this origin must be allow-listed.
+2. Enable email confirmation and configure confirmation/password-reset email templates, rate limits, abuse protection and MFA policy. Existing accounts must confirm their email before password sign-in if confirmation is enabled.
+3. Copy `.env.example` to `.env.local`.
+4. Set `VITE_SUPABASE_URL` to the exact Supabase project URL and `VITE_SUPABASE_PUBLISHABLE_KEY` to its publishable key. Ensure any Vercel environment-variable overrides point to the same project. Never use a service-role/secret key in a Vite client.
+5. Set the same two variables in the Vercel production environment and redeploy.
+6. Run `npm install`, `npm run build`, then `npm run dev`.
 
 ## U.S. launch checklist
 
