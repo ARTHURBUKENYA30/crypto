@@ -1,6 +1,6 @@
 # GROEarnX — U.S. launch guide and challenge checklist
 
-Last reviewed: 22 October 2026.
+Last reviewed: 23 October 2026.
 
 This is an operational checklist, not legal advice. A crypto market-data website is different from a business that receives customer money, holds private keys, exchanges assets, routes orders, or markets investments. **Do not accept customer funds until a U.S. attorney has classified the exact business model and you have the required authorizations and provider contracts.**
 
@@ -13,16 +13,17 @@ Implemented in the current app:
 - Row-level security on customer-facing tables and immutable posted-ledger protections.
 - No seeded client balances, fabricated transaction history or fallback crypto prices.
 - Investment plans display only when active and marked legally reviewed.
-- The admin screen is read-only and gated by a server-managed Supabase app_metadata role.
+- The admin workspace is gated by server-managed Supabase `app_metadata.role=admin` and verified MFA. It includes read-only customer/verification/transaction queues, an operational support inbox, and a provider-readiness diagnostic. It does not manually override KYC decisions or mark financial transfers completed.
 
 Not production-ready yet:
 - No contracted crypto custody/wallet, ACH/card acquiring, mobile-money, trading/execution or KYC provider is connected.
 - Deposits, withdrawals and buy/sell execution are disabled. No deposit address is generated and no money moves.
-- The backend does not yet post real financial events, verify financial-provider webhooks, reconcile provider and on-chain balances, or record trusted portfolio snapshots.
+- The ledger supports immutable double-entry posting, but no custody, payment or exchange provider is wired into server-side workflows. Financial-provider webhook verification, real settlement reconciliation and trusted portfolio snapshots are not implemented yet.
+- Support ticket creation/replies and a database-backed, reviewed fee-and-limit page are implemented. The fee schedule is currently empty rather than displaying invented fees.
 - No investment plans are active.
 - The active Supabase project is `rqmibtetfzaiadawvnlz` in region eu-west-1 (Ireland). Review whether that data region suits a U.S. launch and your privacy commitments.
 - On 23 October 2026, the old frontend fallback `bxynrnkhnpwsbxamsxpt.supabase.co` was found to fail DNS resolution. The source and current deployed bundle now use `https://rqmibtetfzaiadawvnlz.supabase.co`; the new account/ledger/MFA schema and restrictive MFA policies have been applied there.
-- The U.S. state selector and profile editor save `state_region` to both Auth metadata and the user's own profile row. Those values remain customer-editable and are not proof of residence, licensing eligibility, KYC or permission to move funds. The current active project's Auth users and profiles were empty at setup; older account data was not migrated.
+- The U.S. state selector and profile editor save `state_region` to both Auth metadata and the user's own profile row. Those values remain customer-editable and are not proof of residence, licensing eligibility, KYC or permission to move funds. Older accounts from the broken project were not migrated.
 - The public Vercel site at https://crypto-ten-liart.vercel.app is reachable, and its live JavaScript bundle has been checked for the latest frontend fixes. The connected Vercel management integration still cannot read deployment settings because its team scope returns an authorization error.
 
 ## 2. Step-by-step U.S. launch
@@ -76,49 +77,14 @@ The active Supabase project `rqmibtetfzaiadawvnlz` is currently in region eu-wes
 
 In Supabase Auth settings:
 
-1. Enable email confirmation and configure confirmation and password-reset email templates. The public Auth settings show email signup enabled and auto-confirm disabled, so new users are expected to verify email. Confirm that SMTP/email delivery is configured for arbitrary customer addresses; the built-in default mailer may be too limited for production.
+1. Enable email confirmation and configure confirmation and password-reset email templates. The public Auth settings show email signup enabled and auto-confirm disabled, so new users are expected to verify email. Confirm SMTP/email delivery works for arbitrary customer addresses and enable leaked-password protection in Auth password security settings; the security advisor currently flags it as disabled.
 2. Set the production Site URL to `https://crypto-ten-liart.vercel.app` and add `https://crypto-ten-liart.vercel.app/**` to allowed redirect URLs for this deployment. If the production domain changes, update both settings and redeploy.
 3. Configure password rules, rate limits, anti-abuse protection, session policy and recovery procedures.
 4. Make authenticator MFA mandatory for private account data if that is the selected production policy. The interface routes users to authenticator setup before showing account screens, but the database/API must independently enforce MFA. Showing an MFA screen alone is not sufficient. Sign-in now reports common email/network failures, restores existing sessions to the right account view, and supports choosing a new password after a recovery link. If login still fails on the deployed domain, inspect the Supabase Auth URL configuration and Vercel `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` values first.
-5. In the production Supabase SQL Editor, review and test the following restrictive policies for your required-MFA model. Do this after confirming you can recover an account securely; it intentionally prevents AAL1 sessions from accessing private account tables. If your legal/security team selects a different MFA policy, adjust the rules deliberately rather than silently leaving the APIs unprotected.
+5. The restrictive MFA policies are already applied to active project `rqmibtetfzaiadawvnlz` by the checked-in migrations. Do not rerun copied `CREATE POLICY` SQL manually; duplicate policy names will fail. The latest database security-advisor check returned no findings after the balance RPC was changed to invoker rights. Re-test AAL1 and AAL2 access during release verification.
 
-~~~sql
--- Example only: require a verified aal2 session for private customer data.
--- Run once in the production database after reviewing the policy with your engineer.
-create policy profiles_require_aal2
-  on public.profiles as restrictive for all to authenticated
-  using ((select auth.jwt()->>'aal') = 'aal2')
-  with check ((select auth.jwt()->>'aal') = 'aal2');
+The customer balance RPC is **SECURITY INVOKER**, not SECURITY DEFINER. Migration `supabase/migrations/20261023091929_balance_rpc_invoker_rls_column_grants.sql` gives signed-in users column-limited SELECT access to the ledger tables with RLS restricting access to their own customer-liability accounts and posted journals at AAL2. Anonymous execution is revoked. The RLS DDL helper's direct API EXECUTE privilege is also revoked.
 
-create policy transaction_requests_require_aal2
-  on public.transaction_requests as restrictive for all to authenticated
-  using ((select auth.jwt()->>'aal') = 'aal2')
-  with check ((select auth.jwt()->>'aal') = 'aal2');
-
-create policy wallets_require_aal2
-  on public.wallets as restrictive for all to authenticated
-  using ((select auth.jwt()->>'aal') = 'aal2')
-  with check ((select auth.jwt()->>'aal') = 'aal2');
-
-create policy user_verifications_require_aal2
-  on public.user_verifications as restrictive for all to authenticated
-  using ((select auth.jwt()->>'aal') = 'aal2')
-  with check ((select auth.jwt()->>'aal') = 'aal2');
-
-create policy notifications_require_aal2
-  on public.notifications as restrictive for all to authenticated
-  using ((select auth.jwt()->>'aal') = 'aal2')
-  with check ((select auth.jwt()->>'aal') = 'aal2');
-
-create policy portfolio_snapshots_require_aal2
-  on public.portfolio_snapshots as restrictive for all to authenticated
-  using ((select auth.jwt()->>'aal') = 'aal2')
-  with check ((select auth.jwt()->>'aal') = 'aal2');
-~~~
-
-The customer balance RPC is now **SECURITY INVOKER**, not SECURITY DEFINER. The checked-in migration `supabase/migrations/20261023091929_balance_rpc_invoker_rls_column_grants.sql` gives signed-in users column-limited SELECT access on the ledger tables and adds row-level policies restricting them to their own customer-liability accounts, posted journals, and AAL2 sessions. Anonymous execution is revoked. Do not replace this with a SECURITY DEFINER version; the current Supabase security advisor returned no findings after this hardening. The RLS DDL helper also has EXECUTE revoked from anonymous and authenticated API roles.
-
-After applying these policies, test with one account without MFA (it must receive no private account data) and a separate account with verified MFA (it should see only its own data). Do not rely on a front-end route guard as the security boundary.
 6. Test signup, confirmation, sign-in, sign-out, password reset, expired links, wrong passwords, rate limits and mobile layouts.
 6. The state held in user metadata is customer-editable. Never use it as the authoritative compliance or permission record.
 
@@ -131,6 +97,23 @@ Ask each prospective vendor to confirm in writing that it supports the company's
 - **U.S. funding:** Use a contracted provider's supported U.S. bank/ACH/card checkout. Prefer secure hosted or tokenized checkout over directly collecting bank/card credentials. Confirm settlement, returns, chargebacks, fraud controls, limits and prohibited-business policies.
 - **Mobile money:** MTN/Airtel/M-Pesa should be offered only for regions and customers expressly supported by the provider and compliance plan. Mobile money is not a U.S. substitute for ACH/card. The current payment selector does not initiate a payment.
 - **Identity verification:** Use an approved KYC/KYB provider with secure document collection, status/review workflow, screening required for the model, and documented retention/deletion. Do not ask customers to send full national-ID or driving-permit details through WhatsApp or ordinary registration fields.
+
+### Financial service readiness endpoint
+
+The deployed, JWT-protected Supabase Edge Function `financial-service-status` is called from the MFA-protected Admin workspace. It returns provider-configuration presence and explicit blockers, never API secret values. It is a preflight checklist—not a payment, custody, trade or KYC integration.
+
+Configure these only as server-side Edge Function secrets after the company has contracted the relevant provider and actually completed legal and end-to-end tests. Never add them to `VITE_*` variables:
+
+| Service | Required environment keys |
+| --- | --- |
+| Crypto custody / wallets | `CUSTODY_PROVIDER_NAME`, `CUSTODY_API_KEY`, `CUSTODY_API_SECRET`, `CUSTODY_ACCOUNT_ID`, `CUSTODY_WEBHOOK_SECRET` |
+| USD bank/card payments | `FIAT_PROVIDER_NAME`, `FIAT_API_KEY`, `FIAT_API_SECRET`, `FIAT_MERCHANT_ACCOUNT_ID`, `FIAT_WEBHOOK_SECRET` |
+| Trade execution | `TRADING_PROVIDER_NAME`, `TRADING_API_KEY`, `TRADING_API_SECRET`, `TRADING_ACCOUNT_ID` |
+| Identity verification | `KYC_PROVIDER_NAME`, `KYC_API_KEY`, `KYC_WEBHOOK_SECRET` |
+| Blockchain / transaction monitoring | `BLOCKCHAIN_MONITORING_PROVIDER`, `BLOCKCHAIN_MONITORING_API_KEY` |
+| Manual release gates | `REGULATORY_APPROVAL_CONFIRMED`, `PROVIDER_SANDBOX_TESTS_PASSED`, `PROVIDER_LIVE_VALIDATION_CONFIRMED`, `FINANCIAL_SERVICES_ENABLED` |
+
+These gate flags are operator sign-offs, not proof on their own. Do not set them until the corresponding legal approval, sandbox tests, live settlement/reconciliation checks and incident controls have actually passed. The function checks configuration presence; it does not verify provider uptime or call provider transaction APIs.
 
 ### Step 8 — Complete the real ledger and payment backend
 
