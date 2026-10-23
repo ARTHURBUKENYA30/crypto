@@ -889,7 +889,7 @@ function App() {
             <span className="service-disabled-icon"><Icon name="lock" size={22}/></span>
             <div><span className="service-state-badge">QUOTES ONLY</span><h3>{coin.symbol}/USD is view-only</h3><p>These prices come from public market data. GROEarnX has no connected exchange account to accept orders, calculate actual execution fees, reserve funds, or confirm a fill.</p></div>
           </div>
-          <div className="service-readiness-list"><div><Icon name="check-circle" size={16}/><span>Public market quote and price history</span></div><div><Icon name="lock" size={16}/><span>Order submission and settlement not available</span></div><div><Icon name="lock" size={16}/><span>Balances will not change from this screen</span></div></div>
+          <div className="service-readiness-list"><div><Icon name="check" size={16}/><span>Public market quote and price history</span></div><div><Icon name="lock" size={16}/><span>Order submission and settlement not available</span></div><div><Icon name="lock" size={16}/><span>Balances will not change from this screen</span></div></div>
           <a className="btn btn-outline service-support-link" href={WHATSAPP_URL} target="_blank" rel="noreferrer">Contact support <Icon name="external" size={14}/></a>
         </section>
       </div>
@@ -968,7 +968,7 @@ function App() {
           </div>
         </div>
         <div className="service-readiness-list">
-          <div><Icon name="check-circle" size={16}/><span>Your account and existing transaction history remain available subject to security checks.</span></div>
+          <div><Icon name="check" size={16}/><span>Your account and existing transaction history remain available subject to security checks.</span></div>
           <div><Icon name="lock" size={16}/><span>{deposit ? "Funding checkout and verified deposit addresses will appear only after a contracted provider is activated." : "A withdrawal can only be requested after custody, identity checks, approvals and settlement controls are connected."}</span></div>
           <div><Icon name="info" size={16}/><span>Do not send funds to wallet addresses shared through chat or support messages.</span></div>
         </div>
