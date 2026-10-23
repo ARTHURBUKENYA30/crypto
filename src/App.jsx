@@ -811,7 +811,7 @@ function App() {
       if (fees.data) setFeeSchedules(fees.data);
       if (factors.data) setMfaFactors([...(factors.data.totp || []), ...(factors.data.phone || [])]);
     }
-    loadAccountData().catch(() => { if (active) notify("Some account information could not be loaded. Refresh the page or contact support."); });
+    loadAccountData().catch(() => { if (active) { setBalancesStatus("error"); setFeesLoadError("The fee schedule could not be loaded. Do not assume any fees or limits are zero."); notify("Some account information could not be loaded. The portfolio is marked unavailable rather than showing guessed balances. Refresh the page or contact support."); } });
     return () => { active = false; };
   }, [authUser, mfaAccessGranted]);
   useEffect(() => {
