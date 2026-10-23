@@ -116,34 +116,7 @@ create policy portfolio_snapshots_require_aal2
   with check ((select auth.jwt()->>'aal') = 'aal2');
 ~~~
 
-The balance RPC is SECURITY DEFINER, so it must also check the signed-in JWT assurance level inside the function, not just rely on table RLS:
-
-~~~sql
-create or replace function public.get_my_asset_balances()
-returns table (asset_code text, balance numeric)
-language sql
-stable
-security definer
-set search_path = ''
-as $
-  select a.asset_code,
-         coalesce(sum(case when e.side = 'credit' then e.amount else -e.amount end), 0)::numeric as balance
-  from public.ledger_accounts a
-  left join public.ledger_entries e on e.account_id = a.id
-    and exists (
-      select 1 from public.ledger_journals j
-      where j.id = e.journal_id and j.status = 'posted'
-    )
-  where a.owner_user_id = (select auth.uid())
-    and a.account_type = 'customer_liability'
-    and (select auth.jwt()->>'aal') = 'aal2'
-  group by a.asset_code
-  order by a.asset_code;
-$;
-
-revoke all on function public.get_my_asset_balances() from public, anon;
-grant execute on function public.get_my_asset_balances() to authenticated;
-~~~
+The customer balance RPC is now **SECURITY INVOKER**, not SECURITY DEFINER. The checked-in migration `supabase/migrations/20261023091929_balance_rpc_invoker_rls_column_grants.sql` gives signed-in users column-limited SELECT access on the ledger tables and adds row-level policies restricting them to their own customer-liability accounts, posted journals, and AAL2 sessions. Anonymous execution is revoked. Do not replace this with a SECURITY DEFINER version; the current Supabase security advisor returned no findings after this hardening. The RLS DDL helper also has EXECUTE revoked from anonymous and authenticated API roles.
 
 After applying these policies, test with one account without MFA (it must receive no private account data) and a separate account with verified MFA (it should see only its own data). Do not rely on a front-end route guard as the security boundary.
 6. Test signup, confirmation, sign-in, sign-out, password reset, expired links, wrong passwords, rate limits and mobile layouts.
