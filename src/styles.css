@@ -1013,3 +1013,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .provider-readiness-actions { width: 100%; align-items: stretch; }
   .provider-readiness-list { grid-template-columns: 1fr; }
 }
+
+
+.admin-customer-management, .admin-verification-queue { margin: 24px 0; padding-top: 23px; border-top: 1px solid var(--line); }
+.admin-customer-management > .panel-heading, .admin-verification-queue > .panel-heading { margin-bottom: 14px; }
+.admin-customer-management .market-table td, .admin-verification-queue .market-table td { vertical-align: middle; }
+.admin-customer-management td small { display: block; margin-top: 4px; color: #8997a7; font-size: 9px; }
