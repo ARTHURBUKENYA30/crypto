@@ -13,7 +13,7 @@ GROEarnX is a React/Vite crypto-market interface with a Supabase-backed account 
 - **Investment plans:** No plan or return is enabled by default. Never advertise a return as guaranteed.
 - **Login recovery and session behavior:** The frontend now handles network exceptions without leaving sign-in/loading states stuck, restores valid sessions to the account view, routes email-confirmed sessions to security setup, and provides a password-reset completion screen. These code fixes do not replace the Supabase production URL, key, email-delivery or redirect configuration.
 - **Production backend repair:** The previous frontend fallback pointed to a Supabase host that failed DNS resolution. The source fallback and active Vercel bundle now point to `https://rqmibtetfzaiadawvnlz.supabase.co`; a live invalid-credential smoke test returned the normal credentials error rather than a network failure.
-- **Database schema:** The account/ledger foundation and MFA database policies are applied to that active project and checked via the Supabase table/migration listing. It contains no seeded funds, wallet addresses or transaction history.
+- **Database schema:** The account/ledger foundation and MFA database policies are applied to that active project and checked via the Supabase table/migration listing. It contains no seeded funds, wallet addresses, transaction history, or existing user accounts; users must sign up on the active project.
 - **Watchlist:** Market watchlist selections persist in the current browser only; they are not synced between devices or stored in the user account.
 
 ## Configure real account authentication
