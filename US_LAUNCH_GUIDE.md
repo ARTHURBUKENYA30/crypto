@@ -76,9 +76,9 @@ The connected Supabase project is currently in region eu-west-2 (UK). Decide the
 In Supabase Auth settings:
 
 1. Enable email confirmation and configure confirmation and password-reset email templates.
-2. Set the production Site URL and allowed redirect URLs to the exact production domain, including the chosen www/non-www form.
+2. Set the production Site URL to `https://crypto-ten-liart.vercel.app` and add `https://crypto-ten-liart.vercel.app/**` to allowed redirect URLs for this deployment. If the production domain changes, update both settings and redeploy.
 3. Configure password rules, rate limits, anti-abuse protection, session policy and recovery procedures.
-4. Make authenticator MFA mandatory for private account data if that is the selected production policy. The interface routes users to authenticator setup before showing account screens, but the database/API must independently enforce MFA. Showing an MFA screen alone is not sufficient.
+4. Make authenticator MFA mandatory for private account data if that is the selected production policy. The interface routes users to authenticator setup before showing account screens, but the database/API must independently enforce MFA. Showing an MFA screen alone is not sufficient. Sign-in now reports common email/network failures, restores existing sessions to the right account view, and supports choosing a new password after a recovery link. If login still fails on the deployed domain, inspect the Supabase Auth URL configuration and Vercel `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` values first.
 5. In the production Supabase SQL Editor, review and test the following restrictive policies for your required-MFA model. Do this after confirming you can recover an account securely; it intentionally prevents AAL1 sessions from accessing private account tables. If your legal/security team selects a different MFA policy, adjust the rules deliberately rather than silently leaving the APIs unprotected.
 
 ~~~sql
