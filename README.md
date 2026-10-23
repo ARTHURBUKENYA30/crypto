@@ -5,23 +5,26 @@ GROEarnX is a React/Vite crypto-market interface with a Supabase-backed account 
 ## Current implementation status
 
 - **Accounts:** Supabase email/password sign-up and sign-in are implemented in the frontend. Configure the environment variables below and enable email confirmation / password security in Supabase before onboarding clients.
-- **Profiles:** A profile row is provisioned by an Auth trigger. Country, display name, phone and a provider-managed KYC status are supported.
+- **Profiles:** A profile row is provisioned by an Auth trigger. Customers can edit display name, country/state and phone; they cannot edit their own KYC status. User-entered location is not a compliance decision.
+- **Support centre:** Customer support tickets are saved in Supabase with customer-only access; authenticated MFA-protected admins can respond and resolve them.
+- **Fees & limits:** A dashboard page reads only active, legally reviewed fee schedules from the database. No schedule is populated yet, so it reports that fees and limits have not been published.
+- **Administration:** The admin view lists customer profiles, verification-provider records, transaction requests and a support inbox. The server-side readiness endpoint checks provider configuration and release gates without exposing secret values.
 - **User activity requests:** The database has per-user transaction request records with row-level security. The interface does not submit deposit or withdrawal requests until a real provider is connected.
 - **Ledger foundation:** Database tables for immutable posted journal entries, balance-by-asset reporting and transaction reconciliation foundations exist. No customer balances or ledger entries are seeded.
 - **Markets:** Public CoinGecko quotes may load when the provider is available. Quotes are market information, not exchange execution.
-- **Custody, payments, KYC, exchange orders, notifications and admin operations:** Database foundations exist for some records, but the required provider integrations and end-to-end operational workflows are not yet complete. Do not accept customer funds or advertise live trading/investment services yet.
+- **Real-money services:** No contracted crypto custody/wallet, bank/card/mobile-money, trading execution, KYC or blockchain-monitoring provider is integrated. Deposits, withdrawals and trades are disabled; no provider has been used to move funds. Do not accept customer funds or advertise live trading/investment services yet.
 - **Investment plans:** No plan or return is enabled by default. Never advertise a return as guaranteed.
 - **Login recovery and session behavior:** The frontend now handles network exceptions without leaving sign-in/loading states stuck, restores valid sessions to the account view, routes email-confirmed sessions to security setup, and provides a password-reset completion screen. These code fixes do not replace the Supabase production URL, key, email-delivery or redirect configuration.
 - **Production backend repair:** The previous frontend fallback pointed to a Supabase host that failed DNS resolution. The source fallback and active Vercel bundle now point to `https://rqmibtetfzaiadawvnlz.supabase.co`; a live invalid-credential smoke test returned the normal credentials error rather than a network failure.
-- **Database schema:** The account/ledger foundation and MFA database policies are applied to that active project and checked via the Supabase table/migration listing. It contains no seeded funds, wallet addresses, transaction history, or existing user accounts; users must sign up on the active project.
+- **Database schema:** The account/ledger, support-ticket, fee-schedule and MFA policies have been applied to the active project. No funds, wallet addresses, transaction requests, support tickets or fee schedules are seeded. Existing accounts from the broken project were not migrated; register on the corrected backend.
 - **Watchlist:** Market watchlist selections persist in the current browser only; they are not synced between devices or stored in the user account.
 
 ## Configure real account authentication
 
 1. In Supabase project **crypto** (project ref `rqmibtetfzaiadawvnlz`), open Authentication → URL Configuration. Set **Site URL** to `https://crypto-ten-liart.vercel.app` and add `https://crypto-ten-liart.vercel.app/**` to the allowed Redirect URLs. Signup confirmation and password recovery redirect to the current site origin, so this origin must be allow-listed.
-2. Enable email confirmation and configure confirmation/password-reset email templates, rate limits, abuse protection and MFA policy. Existing accounts must confirm their email before password sign-in if confirmation is enabled.
-3. Copy `.env.example` to `.env.local`.
-4. Set `VITE_SUPABASE_URL` to the exact Supabase project URL and `VITE_SUPABASE_PUBLISHABLE_KEY` to its publishable key. Ensure any Vercel environment-variable overrides point to the same project. Never use a service-role/secret key in a Vite client.
+2. Enable email confirmation, configure confirmation/password-reset delivery to arbitrary customer addresses, configure rate limits and abuse protection, and enable leaked-password protection in Supabase Auth password security settings. The security advisor currently flags leaked-password protection as disabled. Existing accounts must confirm their email before password sign-in if confirmation is enabled.
+3. Copy `.env.example` to `.env.local`; it now points to the active project.
+4. Keep `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` aligned with the active public project URL/key. The publishable key is designed for browser use; never put a Supabase secret/service-role key in a Vite client. Ensure any Vercel environment-variable overrides use the same project.
 5. Set the same two variables in the Vercel production environment and redeploy.
 6. Run `npm install`, `npm run build`, then `npm run dev`.
 
@@ -46,7 +49,7 @@ Before any real deposit, withdrawal, buy/sell or yield service is activated:
 
 ## Database migration
 
-The production account/ledger foundation migration has been applied to the connected Supabase project. All exposed user tables use row-level security. The schema deliberately contains no seeded customer funds, wallet addresses, or active investment plans.
+The production account/ledger, support-ticket, admin verification, fee/limit and MFA migrations have been applied to the connected Supabase project. All customer-facing tables use row-level security. The schema deliberately contains no seeded customer funds, wallet addresses, transaction requests or published fee schedules.
 
 ## Market data
 
