@@ -20,7 +20,8 @@ Not production-ready yet:
 - Deposits, withdrawals and buy/sell execution are disabled. No deposit address is generated and no money moves.
 - The backend does not yet post real financial events, verify financial-provider webhooks, reconcile provider and on-chain balances, or record trusted portfolio snapshots.
 - No investment plans are active.
-- The connected Supabase project currently reports region eu-west-2 (UK). Review whether this is suitable for a U.S. launch and your data/privacy commitments.
+- The active Supabase project is `rqmibtetfzaiadawvnlz` in region eu-west-1 (Ireland). Review whether that data region suits a U.S. launch and your privacy commitments.
+- On 23 October 2026, the old frontend fallback `bxynrnkhnpwsbxamsxpt.supabase.co` was found to fail DNS resolution. The source and current deployed bundle now use `https://rqmibtetfzaiadawvnlz.supabase.co`; the new account/ledger/MFA schema and restrictive MFA policies have been applied there.
 - The U.S. state selector saves state in editable Auth user metadata; a database column for authoritative state records was not added. Do not use user-editable metadata as proof of residence, licensing eligibility, KYC or permission to move funds.
 - The public Vercel site at https://crypto-ten-liart.vercel.app is reachable, and its live JavaScript bundle has been checked for the latest frontend fixes. The connected Vercel management integration still cannot read deployment settings because its team scope returns an authorization error.
 
@@ -62,7 +63,7 @@ Until a state is approved, the server must reject the regulated action for that 
 
 ### Step 5 — Decide on production hosting and data region
 
-The connected Supabase project is currently in region eu-west-2 (UK). Decide the production region after reviewing privacy, contracts, provider needs, regulator expectations and data residency with counsel.
+The active Supabase project `rqmibtetfzaiadawvnlz` is currently in region eu-west-1 (Ireland). Decide whether to retain it after reviewing privacy, contracts, provider needs, regulator expectations and data residency with counsel. The prior project reference used by the source code was a DNS failure and is no longer the app fallback.
 
 1. Open the Supabase dashboard and identify the production project and region approved for the business.
 2. If you create a separate production project, budget for any billable plan/compute and migrate the schema deliberately. Do not blindly copy customer data.
@@ -75,7 +76,7 @@ The connected Supabase project is currently in region eu-west-2 (UK). Decide the
 
 In Supabase Auth settings:
 
-1. Enable email confirmation and configure confirmation and password-reset email templates.
+1. Enable email confirmation and configure confirmation and password-reset email templates. The public Auth settings show email signup enabled and auto-confirm disabled, so new users are expected to verify email. Confirm that SMTP/email delivery is configured for arbitrary customer addresses; the built-in default mailer may be too limited for production.
 2. Set the production Site URL to `https://crypto-ten-liart.vercel.app` and add `https://crypto-ten-liart.vercel.app/**` to allowed redirect URLs for this deployment. If the production domain changes, update both settings and redeploy.
 3. Configure password rules, rate limits, anti-abuse protection, session policy and recovery procedures.
 4. Make authenticator MFA mandatory for private account data if that is the selected production policy. The interface routes users to authenticator setup before showing account screens, but the database/API must independently enforce MFA. Showing an MFA screen alone is not sufficient. Sign-in now reports common email/network failures, restores existing sessions to the right account view, and supports choosing a new password after a recovery link. If login still fails on the deployed domain, inspect the Supabase Auth URL configuration and Vercel `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` values first.
@@ -192,7 +193,7 @@ Before launch, sign off on:
 
 ### Step 11 — Deploy to Vercel
 
-The public domain https://crypto-ten-liart.vercel.app is reachable. The connected Vercel management account still returns a 403 authorization error for team bukenya-arthurs-projects, so deployment settings and environment variables could not be inspected from this session. Open the project in the Vercel account that owns it to verify the production environment and Git source.
+The public domain https://crypto-ten-liart.vercel.app is reachable, and the live JavaScript bundle was verified to use the active Supabase project reference and contain the latest frontend fixes. The connected Vercel management account still returns a 403 authorization error for team bukenya-arthurs-projects, so project settings and environment variables could not be inspected. The current bundle is correct, but open the project in Vercel to check future environment-variable overrides.
 
 1. Open the Vercel connection authorization flow and grant access to the team that owns the project. If this is not the intended account, use your own authorized Vercel account to import the repository.
 2. In Vercel select Add New → Project and import [ARTHURBUKENYA30/crypto](https://github.com/ARTHURBUKENYA30/crypto). Select Vite if it is not detected.
