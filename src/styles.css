@@ -1019,3 +1019,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .admin-customer-management > .panel-heading, .admin-verification-queue > .panel-heading { margin-bottom: 14px; }
 .admin-customer-management .market-table td, .admin-verification-queue .market-table td { vertical-align: middle; }
 .admin-customer-management td small { display: block; margin-top: 4px; color: #8997a7; font-size: 9px; }
+
+
+.fees-service-notice { display: flex; align-items: flex-start; gap: 13px; margin: 18px 0; padding: 16px; border: 1px solid #dde9e5; border-radius: 12px; background: #f3faf7; }
+.fees-service-notice .service-disabled-icon { background: #e1f3eb; color: #167454; }
+.fees-service-notice b { display: block; color: #234838; font-size: 12px; line-height: 1.5; }
+.fees-service-notice p { margin: 5px 0 0; color: #60786d; font-size: 11px; line-height: 1.65; }
+.fees-table td { vertical-align: top; min-width: 130px; white-space: normal; line-height: 1.6; }
+.fees-table td:first-child { min-width: 190px; }
+.fees-table td small { display: block; margin-top: 4px; color: #8592a2; font-size: 9px; line-height: 1.5; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .fees-service-notice { padding: 13px; gap: 10px; }
+}
