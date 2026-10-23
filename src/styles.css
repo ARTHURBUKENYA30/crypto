@@ -225,6 +225,7 @@ main { overflow: hidden; }
 .password-wrap input { padding-right: 38px !important; }
 .password-wrap svg { position: absolute; right: 13px; top: 14px; color: #8c9aaa; }
 .auth-options { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.auth-session-note { color: #7a8798; font-size: 10px; line-height: 1.45; max-width: 220px; }
 .check-row { display: flex; flex-direction: row !important; align-items: flex-start; gap: 8px !important; color: #7a8798 !important; font-size: 10px !important; font-weight: 500 !important; line-height: 1.5; cursor: pointer; }
 .check-row input[type="checkbox"] { margin: 2px 0 0; accent-color: var(--green); width: 14px; height: 14px; flex: 0 0 auto; }
 .auth-options .text-link { font-size: 10px; }
