@@ -1031,3 +1031,18 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @media (max-width: 560px) {
   .fees-service-notice { padding: 13px; gap: 10px; }
 }
+
+
+/* Live dashboard data health and manual refresh */
+.dashboard-data-sync { color: #8190a2; font-size: 9px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dashboard-refresh-button:disabled { opacity: .5; cursor: progress; }
+.dashboard-refresh-button:disabled svg { animation: dashboard-refresh-spin 1.1s linear infinite; }
+.dashboard-data-warning { border-color: #efd9af; background: #fff9ec; }
+.dashboard-data-warning p { margin: 3px 0 0; color: #80683e; font-size: 10px; line-height: 1.55; }
+@keyframes dashboard-refresh-spin { to { transform: rotate(360deg); } }
+@media (max-width: 680px) {
+  .dashboard-data-sync { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-refresh-button:disabled svg { animation: none; }
+}
