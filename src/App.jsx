@@ -446,29 +446,63 @@ function App() {
     }
   }
   async function removeMfaFactor(factorId) {
-    const { error } = await supabase.auth.mfa.unenroll({ factorId });
-    if (error) { notify(error.message); return; }
-    setMfaAccessGranted(false);
-    const { error: refreshError } = await supabase.auth.refreshSession();
-    const factors = await supabase.auth.mfa.listFactors();
-    setMfaFactors([...(factors.data?.totp || []), ...(factors.data?.phone || [])]);
-    if (refreshError) {
-      await supabase.auth.signOut();
-      setAuthUser(null);
-      setView("home");
-      notify("Authenticator removed. Sign in again to establish a fresh secure session.");
-      return;
+    setMfaBusy(true);
+    try {
+      const { error } = await supabase.auth.mfa.unenroll({ factorId });
+      if (error) {
+        notify(authErrorMessage(error, "The authenticator could not be removed."));
+        return;
+      }
+      setMfaAccessGranted(false);
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      const factors = await supabase.auth.mfa.listFactors();
+      if (factors.error) {
+        setMfaFactors([]);
+        notify("Authenticator was removed, but the factor list could not refresh. Reload Security and verify the current status.");
+        return;
+      }
+      const refreshedFactors = [...(factors.data?.totp || []), ...(factors.data?.phone || [])];
+      setMfaFactors(refreshedFactors);
+      if (refreshError) {
+        await supabase.auth.signOut();
+        setAuthUser(null);
+        setMfaAccessGranted(false);
+        setView("home");
+        notify("Authenticator removed. Sign in again to establish a fresh secure session.");
+        return;
+      }
+      const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (assuranceError) {
+        setTab("Security");
+        notify("Authenticator was removed. Refresh Security before accessing private account information.");
+        return;
+      }
+      const verifiedRemaining = refreshedFactors.some(f=>f.status==="verified");
+      setMfaAccessGranted(assurance?.currentLevel==="aal2" && verifiedRemaining);
+      setTab("Security");
+      notify(verifiedRemaining ? "Authenticator updated. Verify MFA again to access account information." : "Authenticator removed. Set up and verify MFA before accessing account information.");
+    } catch (error) {
+      notify(authErrorMessage(error, "The authenticator could not be removed. Check your connection and retry."));
+    } finally {
+      setMfaBusy(false);
     }
-    const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    const verifiedRemaining = [...(factors.data?.totp || []), ...(factors.data?.phone || [])].some(f=>f.status==="verified");
-    setMfaAccessGranted(assurance?.currentLevel==="aal2" && verifiedRemaining);
-    setTab("Security");
-    notify(verifiedRemaining ? "Authenticator updated. Verify MFA again to access account information." : "Authenticator removed. Set up and verify MFA before accessing account information.");
   }
   async function markNotificationRead(notificationId) {
-    const { error } = await supabase.from("notifications").update({ read_at: new Date().toISOString() }).eq("id", notificationId).eq("user_id", authUser.id);
-    if (error) { notify(error.message); return; }
-    setNotifications(items => items.map(item => item.id === notificationId ? { ...item, read_at: new Date().toISOString() } : item));
+    if (!authUser || !mfaAccessGranted) {
+      notify("Verify your authenticator before changing private account notifications.");
+      return;
+    }
+    try {
+      const readAt = new Date().toISOString();
+      const { error } = await supabase.from("notifications").update({ read_at: readAt }).eq("id", notificationId).eq("user_id", authUser.id);
+      if (error) {
+        notify(authErrorMessage(error, "The notification could not be marked as read."));
+        return;
+      }
+      setNotifications(items => items.map(item => item.id === notificationId ? { ...item, read_at: readAt } : item));
+    } catch (error) {
+      notify(authErrorMessage(error, "The notification could not be marked as read. Please retry."));
+    }
   }
   async function submitSupportTicket(e) {
     e.preventDefault();
@@ -538,15 +572,41 @@ function App() {
 
   async function saveProfile(e) {
     e.preventDefault();
+    if (!authUser || !mfaAccessGranted) {
+      notify("Verify your authenticator before updating profile details.");
+      return;
+    }
     const form = e.currentTarget;
-    const updates = { display_name: form.elements.displayName.value.trim(), country: form.elements.country.value, state_region: form.elements.country.value === "United States" ? (form.elements.stateRegion?.value || "") : "", phone: form.elements.phone.value.trim() };
+    const updates = {
+      display_name: form.elements.displayName.value.trim(),
+      country: form.elements.country.value,
+      state_region: form.elements.country.value === "United States" ? (form.elements.stateRegion?.value || "") : "",
+      phone: form.elements.phone.value.trim(),
+    };
+    if (!updates.display_name || updates.display_name.length > 100) {
+      notify("Enter a display name between 1 and 100 characters.");
+      return;
+    }
     const stateRegion = updates.country === "United States" ? (form.elements.stateRegion?.value || "") : "";
-    const { error } = await supabase.from("profiles").update(updates).eq("id", authUser.id);
-    if (error) { notify(error.message); return; }
-    const { error: metadataError } = await supabase.auth.updateUser({ data: { display_name: updates.display_name, country: updates.country, state_region: stateRegion } });
-    if (metadataError) { notify("Profile saved, but the U.S. state/region did not sync. Please retry."); return; }
-    setProfile(p => ({ ...p, name: updates.display_name, country: updates.country, stateRegion, phone: updates.phone }));
-    notify("Profile updated.");
+    setAuthBusy(true);
+    try {
+      const { error } = await supabase.from("profiles").update(updates).eq("id", authUser.id);
+      if (error) {
+        notify(authErrorMessage(error, "Profile changes could not be saved."));
+        return;
+      }
+      const { error: metadataError } = await supabase.auth.updateUser({ data: { display_name: updates.display_name, country: updates.country, state_region: stateRegion } });
+      if (metadataError) {
+        notify("Profile fields were saved, but Auth metadata did not sync. Refresh the page before changing these fields again.");
+        return;
+      }
+      setProfile(p => ({ ...p, name: updates.display_name, country: updates.country, stateRegion, phone: updates.phone }));
+      notify("Profile updated.");
+    } catch (error) {
+      notify(authErrorMessage(error, "Profile changes could not be saved. Please retry."));
+    } finally {
+      setAuthBusy(false);
+    }
   }
   async function resetPassword() {
     const email = profile.email.trim();
@@ -596,18 +656,29 @@ function App() {
     }
   }
   async function signOut() {
-    const { error } = await supabase.auth.signOut();
-    if (error) { notify(error.message); return; }
-    setAuthUser(null);
-    setMfaAccessGranted(false);
-    setWalletBalances({});
-    setWallets([]);
-    setPortfolioHistory([]);
-    setNotifications([]);
-    setTransactions([]);
-    setView("home");
-    setTab("Overview");
-    notify("You have signed out.");
+    setAuthBusy(true);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        notify(authErrorMessage(error, "Sign out could not be completed."));
+        return;
+      }
+      setAuthUser(null);
+      setMfaAccessGranted(false);
+      setWalletBalances({});
+      setWallets([]);
+      setPortfolioHistory([]);
+      setNotifications([]);
+      setTransactions([]);
+      setSupportTickets([]);
+      setView("home");
+      setTab("Overview");
+      notify("You have signed out.");
+    } catch (error) {
+      notify(authErrorMessage(error, "Sign out could not be completed. Check your connection and retry."));
+    } finally {
+      setAuthBusy(false);
+    }
   }
   useEffect(() => {
     if (!supabaseConfigured) return;
@@ -1039,7 +1110,7 @@ function App() {
             <div className="activity-note"><Icon name="info" size={16}/> If you lose your authenticator, account recovery must verify your identity. Never share one-time codes or recovery phrases with support.</div>
           </section>}
           {tab === "Verification" && <section className="panel-card route-panel verification-page"><div className="panel-heading"><div><h2>Identity verification</h2><p>Secure verification must be completed through an approved KYC provider when required.</p></div><span className={"status-label "+(profile.kycStatus==="verified"?"status-ok":"status-pending")}><i/>{profile.kycStatus==="verified"?"Verified":profile.kycStatus==="pending"?"In review":"Not verified"}</span></div><div className="verification-steps"><div className="verification-step"><span>01</span><div><b>Country / region</b><p>{profile.country || "Add your country in profile settings."}</p></div><span className="status-label status-ok">{profile.country?"Provided":"Required"}</span></div><div className="verification-step"><span>02</span><div><b>National ID or driving permit</b><p>Submit documents only through the secure identity provider when that integration is available. Do not send ID images over chat.</p></div><span className="status-label status-pending">Provider required</span></div><div className="verification-step"><span>03</span><div><b>Review and approval</b><p>Account limits and regulated features depend on the verified result.</p></div><span className={"status-label "+(profile.kycStatus==="verified"?"status-ok":"status-pending")}>{profile.kycStatus.replaceAll("_"," ")}</span></div></div><button className="btn btn-outline" onClick={() => setTab("Profile")}>Review profile <Icon name="arrowRight" size={14}/></button></section>}
-          {tab === "Profile" && <section className="panel-card route-panel profile-page"><div className="panel-heading"><div><h2>Profile &amp; preferences</h2><p>Update your contact and region information.</p></div><span className="status-label status-ok">Authenticated</span></div><form className="profile-edit-form" onSubmit={saveProfile}><label>Display name<input name="displayName" value={profile.name} onChange={e=>setProfile(p=>({...p,name:e.target.value}))} required maxLength={100}/></label><label>Email address<input value={profile.email} readOnly disabled/></label><label>Country / region<select name="country" value={profile.country} onChange={e=>setProfile(p=>({...p,country:e.target.value,stateRegion:e.target.value==="United States"?p.stateRegion:""}))} required><option value="">Choose your country</option>{COUNTRIES.map(country=><option key={country}>{country}</option>)}</select></label>{profile.country==="United States" && <label>State / territory<select name="stateRegion" value={profile.stateRegion||""} onChange={e=>setProfile(p=>({...p,stateRegion:e.target.value}))} required><option value="">Choose your state</option>{US_STATES.map(state=><option key={state}>{state}</option>)}</select></label>}<label>Phone number<input name="phone" value={profile.phone||""} onChange={e=>setProfile(p=>({...p,phone:e.target.value}))} autoComplete="tel" maxLength={40} placeholder="+1…"/></label><button className="btn btn-primary" type="submit">Save profile <Icon name="check" size={15}/></button></form><div className="profile-grid"><div className="profile-field"><span>Identity verification</span><b>{profile.kycStatus==="verified"?"Verified":"Not verified"}</b></div><div className="profile-field"><span>Account status</span><b>Authenticated</b></div></div><div className="activity-note"><Icon name="shield" size={16}/> National ID and driving-permit details belong in the secure KYC provider flow, not ordinary profile fields.</div></section>}
+          {tab === "Profile" && <section className="panel-card route-panel profile-page"><div className="panel-heading"><div><h2>Profile &amp; preferences</h2><p>Update your contact and region information.</p></div><span className="status-label status-ok">Authenticated</span></div><form className="profile-edit-form" onSubmit={saveProfile}><label>Display name<input name="displayName" value={profile.name} onChange={e=>setProfile(p=>({...p,name:e.target.value}))} required maxLength={100}/></label><label>Email address<input value={profile.email} readOnly disabled/></label><label>Country / region<select name="country" value={profile.country} onChange={e=>setProfile(p=>({...p,country:e.target.value,stateRegion:e.target.value==="United States"?p.stateRegion:""}))} required><option value="">Choose your country</option>{COUNTRIES.map(country=><option key={country}>{country}</option>)}</select></label>{profile.country==="United States" && <label>State / territory<select name="stateRegion" value={profile.stateRegion||""} onChange={e=>setProfile(p=>({...p,stateRegion:e.target.value}))} required><option value="">Choose your state</option>{US_STATES.map(state=><option key={state}>{state}</option>)}</select></label>}<label>Phone number<input name="phone" value={profile.phone||""} onChange={e=>setProfile(p=>({...p,phone:e.target.value}))} autoComplete="tel" maxLength={40} placeholder="+1…"/></label><button className="btn btn-primary" type="submit" disabled={authBusy}>{authBusy ? "Saving profile…" : "Save profile"} <Icon name="check" size={15}/></button></form><div className="profile-grid"><div className="profile-field"><span>Identity verification</span><b>{profile.kycStatus==="verified"?"Verified":"Not verified"}</b></div><div className="profile-field"><span>Account status</span><b>Authenticated</b></div></div><div className="activity-note"><Icon name="shield" size={16}/> National ID and driving-permit details belong in the secure KYC provider flow, not ordinary profile fields.</div></section>}
           {tab === "Admin" && isAdmin && <section className="panel-card route-panel admin-page"><div className="panel-heading"><div><h2>Administration</h2><p>Read-only operational view. Use server-side admin functions for approvals and provider actions.</p></div><span className="status-label status-ok">Restricted access</span></div><div className="admin-summary-grid"><div><small>Registered profiles</small><b>{adminUserCount===null?"—":adminUserCount}</b></div><div><small>Requests listed</small><b>{adminRequests.length}</b></div><div><small>Needs review</small><b>{adminRequests.filter(x=>["pending","under_review","processing"].includes(x.status)).length}</b></div></div><div className="table-wrap"><table className="market-table"><thead><tr><th>Request ID</th><th>User</th><th>Type</th><th>Asset</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead><tbody>{adminRequests.map(r=><tr key={r.id}><td>{r.id.slice(0,8)}</td><td>{r.user_id.slice(0,8)}…</td><td>{r.request_type.replaceAll("_"," ")}</td><td>{r.asset_code}</td><td>{shortNumber(Number(r.amount),8)}</td><td><span className="status-label status-pending">{r.status.replaceAll("_"," ")}</span></td><td>{new Date(r.created_at).toLocaleDateString("en-US")}</td></tr>)}</tbody></table>{adminRequests.length===0 && <div className="empty-state"><b>No transaction requests found.</b></div>}</div><section className="admin-support-inbox"><div className="panel-heading"><div><h3>Customer support inbox</h3><p>Review customer tickets and record an auditable response/status.</p></div><span className="status-label status-neutral">{supportTickets.length} tickets</span></div>
             {supportTickets.length===0 ? <div className="empty-state"><Icon name="info" size={23}/><b>No customer support tickets yet.</b><span>Tickets submitted by authenticated customers will appear here.</span></div> : <div className="admin-support-list">{supportTickets.map(ticket=><form className="admin-ticket-card" key={ticket.id} onSubmit={e=>updateSupportTicket(ticket.id,e)}>
               <div className="admin-ticket-head"><div><span className="support-ticket-category">{ticket.category.replaceAll("_"," ")}</span><h4>{ticket.subject}</h4><small>User {ticket.user_id.slice(0,8)}… · {new Date(ticket.created_at).toLocaleString("en-US",{dateStyle:"medium",timeStyle:"short"})}</small></div><span className={"status-label "+(["resolved","closed"].includes(ticket.status)?"status-ok":"status-pending")}>{ticket.status.replaceAll("_"," ")}</span></div>
