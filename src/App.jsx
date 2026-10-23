@@ -149,6 +149,7 @@ function App() {
   const [mfaSetup, setMfaSetup] = useState(null);
   const [mfaCode, setMfaCode] = useState("");
   const [mfaLogin, setMfaLogin] = useState(null);
+  const [passwordRecoveryActive, setPasswordRecoveryActive] = useState(false);
   const [mfaBusy, setMfaBusy] = useState(false);
   const [adminRequests, setAdminRequests] = useState([]);
   const [adminUserCount, setAdminUserCount] = useState(null);
@@ -165,7 +166,15 @@ function App() {
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [watchlist, setWatchlist] = useState(["bitcoin", "ethereum", "solana"]);
+  const [watchlist, setWatchlist] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem("groearnx-watchlist");
+      const parsed = saved ? JSON.parse(saved) : null;
+      return Array.isArray(parsed) ? parsed.filter(id => ASSET_META.some(asset => asset.id === id)) : ["bitcoin", "ethereum", "solana"];
+    } catch {
+      return ["bitcoin", "ethereum", "solana"];
+    }
+  });
   const [transactions, setTransactions] = useState([]);
   const [request, setRequest] = useState({ direction: "deposit", asset: "usdt", amount: "", network: "trc20", country: "United States", provider: "U.S. bank transfer (ACH)", phone: "", destination: "", acknowledged: false });
   const [profile, setProfile] = useState({ name: "", email: "", country: "", stateRegion: "", phone: "", kycStatus: "not_started" });
@@ -205,6 +214,14 @@ function App() {
     const id = window.setTimeout(() => setToast(""), 4200);
     return () => window.clearTimeout(id);
   }, [toast]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("groearnx-watchlist", JSON.stringify(watchlist));
+    } catch {
+      // Browser storage can be unavailable in private or restricted contexts.
+    }
+  }, [watchlist]);
 
   const coinById = useMemo(() => Object.fromEntries(market.map(c => [c.id, c])), [market]);
   const portfolioRows = useMemo(() => ASSET_META.map(asset => {
@@ -425,8 +442,49 @@ function App() {
   async function resetPassword() {
     const email = profile.email.trim();
     if (!email) { notify("Enter your email address first, then select Forgot password."); return; }
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
-    notify(error ? error.message : "If that account exists, a password reset email has been sent.");
+    setAuthBusy(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+      notify(error ? authErrorMessage(error, "Password reset could not be requested.") : "If that account exists, a password reset email has been sent. Open it on this same site to choose a new password.");
+    } catch (error) {
+      notify(authErrorMessage(error, "Password reset could not be requested. Check your connection and try again."));
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function completePasswordReset(e) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const newPassword = form.elements.newPassword.value;
+    const confirmPassword = form.elements.confirmPassword.value;
+    if (newPassword.length < 8) {
+      notify("Choose a password with at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      notify("The two passwords do not match.");
+      return;
+    }
+    setAuthBusy(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        notify(authErrorMessage(error, "The password could not be updated. Reopen the latest reset link and try again."));
+        return;
+      }
+      await supabase.auth.signOut();
+      setPasswordRecoveryActive(false);
+      setAuthUser(null);
+      setMfaAccessGranted(false);
+      setView("signin");
+      setTab("Overview");
+      notify("Password updated successfully. Sign in using your new password.");
+    } catch (error) {
+      notify(authErrorMessage(error, "The password could not be updated. Reopen the latest reset link and try again."));
+    } finally {
+      setAuthBusy(false);
+    }
   }
   async function signOut() {
     const { error } = await supabase.auth.signOut();
@@ -469,6 +527,11 @@ function App() {
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
       setAuthUser(session?.user || null);
+      if (event === "PASSWORD_RECOVERY") {
+        setPasswordRecoveryActive(true);
+        setMfaAccessGranted(false);
+        return;
+      }
       if (!session?.user) {
         setMfaAccessGranted(false);
         return;
@@ -662,6 +725,26 @@ function App() {
         <div className="auth-form-wrap"><div className="auth-form-heading"><span className="section-kicker">VERIFY YOUR IDENTITY</span><h2>Enter authenticator code</h2><p>Use the six-digit code from your authenticator app.</p></div>
           <form className="auth-form" onSubmit={verifyMfaLogin}><label>Authentication code<input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e=>setMfaCode(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="000000" required/></label><button className="btn btn-primary auth-submit" type="submit" disabled={mfaBusy || mfaCode.length!==6}>{mfaBusy ? "Verifying…" : "Verify and continue"} <Icon name="arrowRight" size={16}/></button></form>
           <div className="auth-legal">Keep your authenticator device secure. If you lose it, use the verified account-recovery process.</div>
+        </div>
+        <div className="auth-bottom-line"><span>© {new Date().getFullYear()} GROEarnX</span><a href={WHATSAPP_URL} target="_blank" rel="noreferrer">Support <Icon name="external" size={12}/></a></div>
+      </div>
+    </div>;
+  }
+
+  function renderPasswordRecovery() {
+    return <div className="auth-page">
+      <div className="auth-brand-rail"><div className="auth-rail-top"><Brand onClick={() => { setPasswordRecoveryActive(false); setView("home"); }} /><span className="auth-rail-pill"><span className="status-dot" /> ACCOUNT RECOVERY</span></div>
+        <div className="auth-promo"><span className="eyebrow"><span className="eyebrow-dot" /> PASSWORD RESET</span><h1>Secure your account<br />with a new <em>password.</em></h1><p>Choose a new password for this account. GROEarnX will not ask you to share your password or recovery link with support.</p></div>
+        <div className="auth-rail-footer"><span className="rail-seal"><Icon name="shield" size={17}/></span><span>Protect your account.<br/><b>Never share reset links.</b></span></div>
+      </div>
+      <div className="auth-main"><div className="auth-mobile-brand"><Brand onClick={() => { setPasswordRecoveryActive(false); setView("home"); }}/></div>
+        <div className="auth-form-wrap"><div className="auth-form-heading"><span className="section-kicker">ACCOUNT RECOVERY</span><h2>Set a new password</h2><p>Use at least eight characters and enter the same password twice.</p></div>
+          <form className="auth-form" onSubmit={completePasswordReset}>
+            <label>New password<div className="password-wrap"><input type="password" name="newPassword" autoComplete="new-password" minLength={8} placeholder="At least 8 characters" required/><Icon name="lock" size={16}/></div></label>
+            <label>Confirm new password<div className="password-wrap"><input type="password" name="confirmPassword" autoComplete="new-password" minLength={8} placeholder="Enter it again" required/><Icon name="lock" size={16}/></div></label>
+            <button className="btn btn-primary auth-submit" type="submit" disabled={authBusy}>{authBusy ? "Updating password…" : "Update password"} <Icon name="arrowRight" size={16}/></button>
+          </form>
+          <div className="auth-legal">If this link has expired, return to sign in and request another reset email.</div>
         </div>
         <div className="auth-bottom-line"><span>© {new Date().getFullYear()} GROEarnX</span><a href={WHATSAPP_URL} target="_blank" rel="noreferrer">Support <Icon name="external" size={12}/></a></div>
       </div>
@@ -893,10 +976,12 @@ function App() {
 
   return <div className="app-root">
     <div className="brand-info-ribbon"><span className="status-dot" /> GROEarnX <span>— crypto markets, portfolio information and account management</span></div>
-    {view === "home" && renderHome()}
-    {(view === "signin" || view === "signup") && renderAuth(view === "signup")}
-    {view === "mfaChallenge" && renderMfaChallenge()}
-    {view === "dashboard" && (authUser ? renderDashboard() : renderAuth(false))}
+    {passwordRecoveryActive ? renderPasswordRecovery() : <>
+      {view === "home" && renderHome()}
+      {(view === "signin" || view === "signup") && renderAuth(view === "signup")}
+      {view === "mfaChallenge" && renderMfaChallenge()}
+      {view === "dashboard" && (authUser ? renderDashboard() : renderAuth(false))}
+    </>}
     <a className="whatsapp-float" href={WHATSAPP_URL} target="_blank" rel="noreferrer" aria-label="Chat with GROEarnX support on WhatsApp"><span className="whatsapp-glyph">◉</span><span className="whatsapp-label">Chat with us</span></a>
     {legalPage && renderLegalModal()}
     {toast && <div className="toast" role="status"><span><Icon name="info" size={18}/></span><p>{toast}</p><button aria-label="Dismiss notification" onClick={()=>setToast("")}><Icon name="close" size={15}/></button></div>}
