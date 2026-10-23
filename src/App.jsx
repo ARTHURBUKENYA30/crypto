@@ -71,6 +71,7 @@ function Icon({ name, size = 18 }) {
     eye: <><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /></>,
     plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
     close: <><path d="m6 6 12 12" /><path d="M18 6 6 18" /></>,
+    refresh: <><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M5.4 9A7 7 0 0 1 17 5l3 7" /><path d="M4 12l3 7a7 7 0 0 0 11.6-4" /></>,
     menu: <><path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h16" /></>,
     globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18Z" /></>,
     external: <><path d="M14 4h6v6" /><path d="M20 4 10 14" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></>,
@@ -160,6 +161,11 @@ function App() {
   const [market, setMarket] = useState([]);
   const [marketStatus, setMarketStatus] = useState("unavailable");
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [marketRefresh, setMarketRefresh] = useState(0);
+  const [dashboardRefresh, setDashboardRefresh] = useState(0);
+  const [accountDataLoading, setAccountDataLoading] = useState(false);
+  const [accountDataUpdatedAt, setAccountDataUpdatedAt] = useState(null);
+  const [accountDataWarning, setAccountDataWarning] = useState("");
   const [tradePair, setTradePair] = useState("bitcoin");
   const [showBalances, setShowBalances] = useState(true);
   const [modal, setModal] = useState(null);
@@ -207,7 +213,7 @@ function App() {
     loadMarket();
     const interval = window.setInterval(loadMarket, 60000);
     return () => { alive = false; window.clearInterval(interval); };
-  }, []);
+  }, [marketRefresh]);
 
   useEffect(() => {
     if (!toast) return;
@@ -769,51 +775,81 @@ function App() {
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, []);
   useEffect(() => {
-    if (!supabaseConfigured || !authUser || !mfaAccessGranted) return;
-    let active = true;
-    async function loadAccountData() {
-      setBalancesStatus("loading");
-      setFeesLoadError("");
-      const [p, tx, balance, walletResult, history, notif, plans, factors, fees] = await Promise.all([
-        supabase.from("profiles").select("display_name,country,state_region,phone,kyc_status").eq("id", authUser.id).maybeSingle(),
-        supabase.from("transaction_requests").select("id,request_type,asset_code,amount,status,created_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(100),
-        supabase.rpc("get_my_asset_balances"),
-        supabase.from("wallets").select("id,asset_code,network,deposit_address,provider_name,address_status,created_at").eq("user_id",authUser.id).order("created_at",{ascending:false}).limit(50),
-        supabase.from("portfolio_snapshots").select("id,total_value_usd,captured_at,source").eq("user_id",authUser.id).order("captured_at",{ascending:false}).limit(90),
-        supabase.from("notifications").select("id,category,title,body,read_at,created_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(50),
-        supabase.from("investment_plans").select("id,name,description,asset_code,minimum_amount,maximum_amount,term_days,target_return_apr,return_type,fees_disclosure,risk_disclosure,terms_url").eq("active",true).eq("legally_reviewed",true),
-        supabase.auth.mfa.listFactors(),
-        supabase.from("fee_schedules").select("id,service_code,display_name,asset_code,network,country_code,fee_currency,fixed_fee,fee_percentage,minimum_amount,maximum_amount,daily_limit,monthly_limit,terms,active,legally_reviewed,effective_from").eq("active",true).eq("legally_reviewed",true).or("effective_from.is.null,effective_from.lte."+new Date().toISOString()).order("service_code"),
-      ]);
-      const ticketResult = await supabase.from("support_tickets").select("id,user_id,category,subject,message,status,admin_response,created_at,updated_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(50);
-      if (!active) return;
-      const queryResults = [p, tx, balance, walletResult, history, notif, plans, factors, fees, ticketResult];
-      if (queryResults.some(result => result?.error)) {
-        notify("Some account information could not be loaded. Check the account permissions and refresh before relying on the displayed data.");
-      }
-      if (balance.error) {
-        setBalancesStatus("error");
-        setWalletBalances({});
-      } else if (balance.data) {
-        setWalletBalances(Object.fromEntries(balance.data.map(b => [b.asset_code.toUpperCase(), Number(b.balance)])));
-        setBalancesStatus("available");
-      } else {
-        setBalancesStatus("error");
-      }
-      if (fees.error) setFeesLoadError("The fee schedule could not be loaded. Do not assume any fees or limits are zero.");
-      if (ticketResult.data) setSupportTickets(ticketResult.data);
-      if (p.data) setProfile(prev => ({ ...prev, name: p.data.display_name || prev.name, country: p.data.country || prev.country, stateRegion: p.data.state_region || prev.stateRegion, phone: p.data.phone || "", kycStatus: p.data.kyc_status || "not_started" }));
-      if (tx.data) setTransactions(tx.data.map(t => ({ id:t.id, type:t.request_type.replaceAll("_"," "), asset:t.asset_code, amount:Number(t.amount), unit:t.asset_code, date:new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"2-digit",year:"numeric"}), status:t.status })));
-      if (walletResult.data) setWallets(walletResult.data);
-      if (history.data) setPortfolioHistory(history.data.slice().reverse());
-      if (notif.data) setNotifications(notif.data);
-      if (plans.data) setInvestmentPlans(plans.data);
-      if (fees.data) setFeeSchedules(fees.data);
-      if (factors.data) setMfaFactors([...(factors.data.totp || []), ...(factors.data.phone || [])]);
+    if (!supabaseConfigured || !authUser || !mfaAccessGranted) {
+      setAccountDataLoading(false);
+      return;
     }
-    loadAccountData().catch(() => { if (active) { setBalancesStatus("error"); setFeesLoadError("The fee schedule could not be loaded. Do not assume any fees or limits are zero."); notify("Some account information could not be loaded. The portfolio is marked unavailable rather than showing guessed balances. Refresh the page or contact support."); } });
-    return () => { active = false; };
-  }, [authUser, mfaAccessGranted]);
+    let active = true;
+    let inFlight = false;
+    async function loadAccountData() {
+      if (inFlight) return;
+      inFlight = true;
+      if (active) {
+        setAccountDataLoading(true);
+        setBalancesStatus(current => current === "available" ? current : "loading");
+      }
+      try {
+        setFeesLoadError("");
+        const [p, tx, balance, walletResult, history, notif, plans, factors, fees] = await Promise.all([
+          supabase.from("profiles").select("display_name,country,state_region,phone,kyc_status").eq("id", authUser.id).maybeSingle(),
+          supabase.from("transaction_requests").select("id,request_type,asset_code,amount,status,created_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(100),
+          supabase.rpc("get_my_asset_balances"),
+          supabase.from("wallets").select("id,asset_code,network,deposit_address,provider_name,address_status,created_at").eq("user_id",authUser.id).order("created_at",{ascending:false}).limit(50),
+          supabase.from("portfolio_snapshots").select("id,total_value_usd,captured_at,source").eq("user_id",authUser.id).order("captured_at",{ascending:false}).limit(90),
+          supabase.from("notifications").select("id,category,title,body,read_at,created_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(50),
+          supabase.from("investment_plans").select("id,name,description,asset_code,minimum_amount,maximum_amount,term_days,target_return_apr,return_type,fees_disclosure,risk_disclosure,terms_url").eq("active",true).eq("legally_reviewed",true),
+          supabase.auth.mfa.listFactors(),
+          supabase.from("fee_schedules").select("id,service_code,display_name,asset_code,network,country_code,fee_currency,fixed_fee,fee_percentage,minimum_amount,maximum_amount,daily_limit,monthly_limit,terms,active,legally_reviewed,effective_from").eq("active",true).eq("legally_reviewed",true).or("effective_from.is.null,effective_from.lte."+new Date().toISOString()).order("service_code"),
+        ]);
+        const ticketResult = await supabase.from("support_tickets").select("id,user_id,category,subject,message,status,admin_response,created_at,updated_at").eq("user_id", authUser.id).order("created_at", { ascending: false }).limit(50);
+        if (!active) return;
+        const queryResults = [p, tx, balance, walletResult, history, notif, plans, factors, fees, ticketResult];
+        const partialFailure = queryResults.some(result => result?.error);
+        setAccountDataWarning(partialFailure
+          ? "One or more account sections did not update. Previously loaded records are kept where possible; use Refresh to retry."
+          : "");
+        if (balance.error) {
+          setBalancesStatus("error");
+          setWalletBalances({});
+        } else if (Array.isArray(balance.data)) {
+          setWalletBalances(Object.fromEntries(balance.data.filter(b => b?.asset_code).map(b => [b.asset_code.toUpperCase(), Number(b.balance)])));
+          setBalancesStatus("available");
+        } else {
+          setBalancesStatus("error");
+          setWalletBalances({});
+        }
+        if (fees.error) setFeesLoadError("The fee schedule could not be loaded. Do not assume any fees or limits are zero.");
+        if (ticketResult.data) setSupportTickets(ticketResult.data);
+        if (p.data) setProfile(prev => ({ ...prev, name: p.data.display_name || prev.name, country: p.data.country || prev.country, stateRegion: p.data.state_region || prev.stateRegion, phone: p.data.phone || "", kycStatus: p.data.kyc_status || "not_started" }));
+        if (tx.data) setTransactions(tx.data.map(t => ({ id:t.id, type:t.request_type.replaceAll("_"," "), asset:t.asset_code, amount:Number(t.amount), unit:t.asset_code, date:new Date(t.created_at).toLocaleDateString("en-US",{month:"short",day:"2-digit",year:"numeric"}), status:t.status })));
+        if (walletResult.data) setWallets(walletResult.data);
+        if (history.data) setPortfolioHistory(history.data.slice().reverse());
+        if (notif.data) setNotifications(notif.data);
+        if (plans.data) setInvestmentPlans(plans.data);
+        if (fees.data) setFeeSchedules(fees.data);
+        if (factors.data) setMfaFactors([...(factors.data.totp || []), ...(factors.data.phone || [])]);
+      } catch {
+        if (active) {
+          setBalancesStatus("error");
+          setWalletBalances({});
+          setFeesLoadError("The fee schedule could not be loaded. Do not assume any fees or limits are zero.");
+          setAccountDataWarning("The dashboard could not refresh from the account service. Check your connection and use Refresh to retry.");
+        }
+      } finally {
+        inFlight = false;
+        if (active) {
+          setAccountDataLoading(false);
+          setAccountDataUpdatedAt(new Date());
+        }
+      }
+    }
+    loadAccountData();
+    const interval = window.setInterval(loadAccountData, 30000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [authUser, mfaAccessGranted, dashboardRefresh]);
   useEffect(() => {
     if (!supabaseConfigured || !authUser || !mfaAccessGranted || !isAdmin || tab !== "Admin") return;
     let active = true;
@@ -832,7 +868,7 @@ function App() {
       if (verificationResult.data) setVerificationQueue(verificationResult.data);
     }).catch(() => { if (active) notify("The admin queue could not be loaded. Check the assigned admin role and database policies."); });
     return () => { active = false; };
-  }, [authUser, mfaAccessGranted, isAdmin, tab]);
+  }, [authUser, mfaAccessGranted, isAdmin, tab, dashboardRefresh]);
 
   useEffect(() => {
     if (!authUser || !mfaAccessGranted || !isAdmin || tab !== "Admin") return;
@@ -851,7 +887,7 @@ function App() {
       }
     })();
     return () => { active = false; };
-  }, [authUser, mfaAccessGranted, isAdmin, tab, readinessRefresh]);
+  }, [authUser, mfaAccessGranted, isAdmin, tab, readinessRefresh, dashboardRefresh]);
 
   function openRequest(direction) {
     setModal(direction === "withdraw" ? "withdraw" : "deposit");
@@ -1122,8 +1158,8 @@ function App() {
     const nav = [{ label: "Overview", icon: "grid" }, { label: "Wallets", icon: "wallet" }, { label: "Trade", icon: "chart" }, { label: "Portfolio", icon: "wallet" }, { label: "Markets", icon: "chart" }, { label: "Activity", icon: "activity" }, { label: "Investment Plans", icon: "chart" }, { label: "Fees & Limits", icon: "info" }, { label: "Notifications", icon: "bell" }, { label: "Support", icon: "info" }, { label: "Verification", icon: "shield" }, { label: "Security", icon: "lock" }, { label: "Profile", icon: "user" }, ...(isAdmin ? [{ label: "Admin", icon: "settings" }] : [])];
     return <div className="dashboard-layout">
       <aside className={"sidebar " + (menuOpen ? "sidebar-open" : "")}><div className="sidebar-brand"><Brand onClick={() => setView("home")} /></div><div className="sidebar-caption">WORKSPACE</div><nav className="sidebar-nav">{nav.map(item => <button className={tab === item.label ? "selected" : ""} key={item.label} onClick={() => dashboardNav(item.label)}><Icon name={item.icon} size={18} />{item.label}{item.label === "Verification" && profile.kycStatus !== "verified" && <span className="nav-count">!</span>}{item.label === "Notifications" && notifications.some(n=>!n.read_at) && <span className="nav-count">{notifications.filter(n=>!n.read_at).length}</span>}</button>)}</nav><div className="sidebar-bottom"><div className="support-card"><span className="support-icon"><Icon name="shield" /></span><b>Need a hand?</b><small>Talk to the GROEarnX support team.</small><a href={WHATSAPP_URL} target="_blank" rel="noreferrer">Contact support <Icon name="arrowRight" size={13} /></a></div><button className="sidebar-home" onClick={() => setView("home")}><Icon name="arrowRight" size={15} /> Back to website</button><div className="sidebar-member"><span className="member-avatar">{memberInitials}</span><span><b>{memberName}</b><small>{authUser?.email || "Verified account"}</small></span><button title="Sign out" onClick={signOut}><Icon name="external" size={14}/></button></div></div></aside>
-      <main className="dashboard-main"><header className="dashboard-topbar"><button className="mobile-menu dash-menu" onClick={() => setMenuOpen(v => !v)} aria-label="Toggle dashboard menu"><Icon name="menu" /></button><div className="breadcrumbs">Workspace <span>/</span> <b>{tab}</b></div><div className="dashboard-top-actions"><span className="account-status-chip"><span className="status-dot" /> {mfaAccessGranted ? "SECURE ACCESS" : "SECURITY SETUP REQUIRED"}</span><button className="icon-button" aria-label="Notifications" onClick={() => setTab("Notifications")}><Icon name="bell" /></button><span className="top-avatar">{memberInitials}</span></div></header>
-        <div className="dashboard-content">{!mfaAccessGranted && <div className="dashboard-ledger-notice"><span><Icon name="shield" size={17}/></span><div><b>Verify two-factor authentication</b><p>Account information is hidden until your authenticator is enrolled and verified. Open Security in the sidebar to continue.</p></div></div>}<div className="dashboard-welcome"><div><span className="section-kicker">YOUR WORKSPACE</span><h1>{tab === "Overview" ? `Welcome back, ${memberName}.` : tab}</h1><p>{tab === "Overview" ? "Here is your portfolio, settled activity and current market information." : dashboardDescription(tab)}</p></div><div className="dashboard-welcome-actions"><button className="btn btn-outline" onClick={() => openRequest("withdraw")}> <Icon name="arrowDown" size={15} /> Withdraw</button><button className="btn btn-primary" onClick={() => openRequest("deposit")}> <Icon name="plus" size={15} /> Deposit</button></div></div>
+      <main className="dashboard-main"><header className="dashboard-topbar"><button className="mobile-menu dash-menu" onClick={() => setMenuOpen(v => !v)} aria-label="Toggle dashboard menu"><Icon name="menu" /></button><div className="breadcrumbs">Workspace <span>/</span> <b>{tab}</b></div><div className="dashboard-top-actions"><span className="account-status-chip"><span className="status-dot" /> {mfaAccessGranted ? "SECURE ACCESS" : "SECURITY SETUP REQUIRED"}</span><span className="dashboard-data-sync" role="status" aria-live="polite">{!mfaAccessGranted ? "Private data locked" : accountDataLoading ? "Syncing account…" : accountDataUpdatedAt ? "Checked " + accountDataUpdatedAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "Loading account data"}</span><button className="icon-button dashboard-refresh-button" aria-label="Refresh market and account data" title="Refresh market and account data" onClick={() => { setDashboardRefresh(v => v + 1); setMarketRefresh(v => v + 1); }} disabled={mfaAccessGranted && accountDataLoading}><Icon name="refresh" /></button><button className="icon-button" aria-label="Notifications" onClick={() => dashboardNav("Notifications")}><Icon name="bell" /></button><span className="top-avatar">{memberInitials}</span></div></header>
+        <div className="dashboard-content">{!mfaAccessGranted && <div className="dashboard-ledger-notice"><span><Icon name="shield" size={17}/></span><div><b>Verify two-factor authentication</b><p>Account information is hidden until your authenticator is enrolled and verified. Open Security in the sidebar to continue.</p></div></div>}{accountDataWarning && mfaAccessGranted && <div className="dashboard-ledger-notice dashboard-data-warning"><span><Icon name="info" size={17}/></span><div><b>Some dashboard data needs attention</b><p>{accountDataWarning}</p></div></div>}<div className="dashboard-welcome"><div><span className="section-kicker">YOUR WORKSPACE</span><h1>{tab === "Overview" ? `Welcome back, ${memberName}.` : tab}</h1><p>{tab === "Overview" ? "Here is your portfolio, settled activity and current market information." : dashboardDescription(tab)}</p></div><div className="dashboard-welcome-actions"><button className="btn btn-outline" onClick={() => openRequest("withdraw")}> <Icon name="arrowDown" size={15} /> Withdraw</button><button className="btn btn-primary" onClick={() => openRequest("deposit")}> <Icon name="plus" size={15} /> Deposit</button></div></div>
           <div className="dashboard-ledger-notice"><span><Icon name="info" size={17} /></span><div><b>Your account overview</b><p>Only posted ledger balances are shown here. Market-price changes can increase or decrease the value of your holdings. Deposits, withdrawals and trading require verified service integrations.</p></div><button onClick={() => notify("Real balances should come from a server-side ledger reconciled with trusted wallet/payment providers.")}>How balances work <Icon name="arrowRight" size={13} /></button></div>
           {tab === "Overview" && <>
             <div className="dashboard-metric-grid">
