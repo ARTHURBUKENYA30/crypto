@@ -365,46 +365,93 @@ function App() {
     e.preventDefault();
     if (!mfaLogin) return;
     setMfaBusy(true);
-    const { error } = await supabase.auth.mfa.verify({ factorId: mfaLogin.factorId, challengeId: mfaLogin.challengeId, code: mfaCode.trim() });
-    setMfaBusy(false);
-    if (error) { notify("Authenticator verification failed. Check the code and try again."); return; }
-    setMfaLogin(null);
-    setMfaCode("");
-    setMfaAccessGranted(true);
-    setView("dashboard");
-    setTab("Overview");
-    notify("Two-factor verification complete.");
+    try {
+      const { error } = await supabase.auth.mfa.verify({ factorId: mfaLogin.factorId, challengeId: mfaLogin.challengeId, code: mfaCode.trim() });
+      if (error) {
+        notify("Authenticator verification failed. Check that the code is current and try again.");
+        return;
+      }
+      setMfaLogin(null);
+      setMfaCode("");
+      setMfaAccessGranted(true);
+      setView("dashboard");
+      setTab("Overview");
+      notify("Two-factor verification complete.");
+    } catch (error) {
+      notify(authErrorMessage(error, "The authenticator service could not be reached. Check your connection and try again."));
+    } finally {
+      setMfaBusy(false);
+    }
   }
+
   async function beginMfaEnrollment() {
     setMfaBusy(true);
-    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "GROEarnX authenticator" });
-    setMfaBusy(false);
-    if (error) { notify(error.message); return; }
-    setMfaSetup({ id: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret, uri: data.totp.uri });
-    setMfaCode("");
-    notify("Scan the QR code with an authenticator app, then verify a code.");
+    try {
+      const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "GROEarnX authenticator" });
+      if (error) {
+        notify(authErrorMessage(error, "Authenticator setup could not be started."));
+        return;
+      }
+      if (!data?.id || !data?.totp?.qr_code || !data?.totp?.secret) {
+        notify("The account server did not return the authenticator setup details. Please retry.");
+        return;
+      }
+      setMfaSetup({ id: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret, uri: data.totp.uri });
+      setMfaCode("");
+      notify("Scan the QR code with an authenticator app, then verify a current code.");
+    } catch (error) {
+      notify(authErrorMessage(error, "Authenticator setup could not be started. Check the connection and retry."));
+    } finally {
+      setMfaBusy(false);
+    }
   }
+
   async function verifyMfaEnrollment(e) {
     e.preventDefault();
     if (!mfaSetup) return;
     setMfaBusy(true);
-    const challenge = await supabase.auth.mfa.challenge({ factorId: mfaSetup.id });
-    if (challenge.error) { setMfaBusy(false); notify(challenge.error.message); return; }
-    const { error } = await supabase.auth.mfa.verify({ factorId: mfaSetup.id, challengeId: challenge.data.id, code: mfaCode.trim() });
-    setMfaBusy(false);
-    if (error) { notify("That code could not be verified. Check your device clock and try again."); return; }
-    setMfaSetup(null); setMfaCode("");
-    const factors = await supabase.auth.mfa.listFactors();
-    setMfaFactors([...(factors.data?.totp || []), ...(factors.data?.phone || [])]);
-    const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (assurance?.currentLevel === "aal2") {
-      setMfaAccessGranted(true);
-      setView("dashboard");
-      setTab("Overview");
-      notify("Two-factor authentication is enabled and verified.");
-    } else {
-      setMfaAccessGranted(false);
-      notify("Authenticator enrolled. Complete MFA verification to unlock account information.");
+    try {
+      const challenge = await supabase.auth.mfa.challenge({ factorId: mfaSetup.id });
+      if (challenge.error || !challenge.data?.id) {
+        notify(authErrorMessage(challenge.error, "The authenticator verification challenge could not be created."));
+        return;
+      }
+      const { error } = await supabase.auth.mfa.verify({ factorId: mfaSetup.id, challengeId: challenge.data.id, code: mfaCode.trim() });
+      if (error) {
+        notify("That code could not be verified. Check your device clock and try again.");
+        return;
+      }
+      setMfaSetup(null);
+      setMfaCode("");
+      const factors = await supabase.auth.mfa.listFactors();
+      if (factors.error) {
+        setMfaAccessGranted(false);
+        setTab("Security");
+        notify("Authenticator verification succeeded, but the factor list could not refresh. Reload Security before continuing.");
+        return;
+      }
+      setMfaFactors([...(factors.data?.totp || []), ...(factors.data?.phone || [])]);
+      const { data: assurance, error: assuranceError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (assuranceError) {
+        setMfaAccessGranted(false);
+        setTab("Security");
+        notify("Authenticator enrolled. Refresh the security status before accessing account data.");
+        return;
+      }
+      if (assurance?.currentLevel === "aal2") {
+        setMfaAccessGranted(true);
+        setView("dashboard");
+        setTab("Overview");
+        notify("Two-factor authentication is enabled and verified.");
+      } else {
+        setMfaAccessGranted(false);
+        setTab("Security");
+        notify("Authenticator enrolled. Complete MFA verification to unlock account information.");
+      }
+    } catch (error) {
+      notify(authErrorMessage(error, "Authenticator verification could not be completed. Refresh Security and try again."));
+    } finally {
+      setMfaBusy(false);
     }
   }
   async function removeMfaFactor(factorId) {
