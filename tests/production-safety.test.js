@@ -8,6 +8,10 @@ const readinessFunction = await readFile(
   new URL("../supabase/functions/financial-service-status/index.ts", import.meta.url),
   "utf8",
 );
+const flutterwaveSandbox = await readFile(
+  new URL("../supabase/functions/flutterwave-sandbox-payment-intent/index.ts", import.meta.url),
+  "utf8",
+);
 
 test("financial readiness remains fail-closed until provider workflows are implemented", () => {
   assert.match(readinessFunction, /cryptoCustodyAndPayouts:\s*false/);
@@ -41,4 +45,12 @@ test("trading UI clearly labels the app as quotes-only until execution is integr
   assert.match(app, /Balances will not change from this screen/);
   assert.match(app, /Buy\/sell execution is unavailable until a trading provider is integrated/);
   assert.match(app, /No synthetic market depth is displayed/);
+});
+
+test("Flutterwave adapter is sandbox-only and cannot directly credit balances", () => {
+  assert.match(flutterwaveSandbox, /FLW_ENVIRONMENT.*sandbox/);
+  assert.match(flutterwaveSandbox, /startsWith\("FLWSECK_TEST-"\)/);
+  assert.match(flutterwaveSandbox, /sandbox_intent_created/);
+  assert.match(flutterwaveSandbox, /does not credit a wallet, settle funds, or create a ledger entry/);
+  assert.doesNotMatch(flutterwaveSandbox, /service_role|SUPABASE_SERVICE_ROLE_KEY|sb_secret_/i);
 });
