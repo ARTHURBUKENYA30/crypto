@@ -18,5 +18,7 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install
+      - name: Run production safety contract tests
+        run: npm test
       - name: Build production bundle
         run: npm run build
