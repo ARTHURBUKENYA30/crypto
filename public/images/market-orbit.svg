@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">GROEarnX digital asset visual</title>
+  <desc id="desc">Abstract teal network paths and market chart inspired by digital asset markets.</desc>
+  <defs>
+    <radialGradient id="glow"><stop offset="0" stop-color="#18b985" stop-opacity=".28"/><stop offset="1" stop-color="#071321" stop-opacity="0"/></radialGradient>
+    <linearGradient id="line" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#19c18a"/><stop offset="1" stop-color="#5bc7ff"/></linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="#071321"/>
+  <circle cx="870" cy="300" r="520" fill="url(#glow)"/>
+  <g stroke="#83a9bd" stroke-opacity=".14" fill="none">
+    <path d="M0 150H1200M0 270H1200M0 390H1200M0 510H1200M0 630H1200"/>
+    <path d="M150 0V800M300 0V800M450 0V800M600 0V800M750 0V800M900 0V800M1050 0V800"/>
+  </g>
+  <g stroke="url(#line)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M75 545L185 490 270 520 370 390 470 430 565 300 665 350 770 210 870 250 970 125 1125 165"/>
+  </g>
+  <g fill="#18b985" stroke="#b5ffe5" stroke-width="2">
+    <circle cx="185" cy="490" r="7"/><circle cx="370" cy="390" r="7"/><circle cx="565" cy="300" r="7"/><circle cx="770" cy="210" r="7"/><circle cx="970" cy="125" r="7"/>
+  </g>
+  <g transform="translate(845 440)">
+    <circle r="100" fill="#0b2332" stroke="#19c18a" stroke-opacity=".5" stroke-width="2"/>
+    <circle r="78" fill="#102d3c" stroke="#8debd0" stroke-opacity=".35"/>
+    <path d="M-20 -43H17C50 -43 49 -4 17 -1H-20M-20 -1H22C55 -1 53 43 20 43H-20M-4 -58V58M12 -58V58" fill="none" stroke="#f5bf56" stroke-width="11" stroke-linecap="round"/>
+  </g>
+</svg>

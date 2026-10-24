@@ -978,6 +978,7 @@ function App() {
               <div className="hero-trust"><span><Icon name="shield" size={15} /> Account security controls</span><span><Icon name="chart" size={15} /> Public market data</span></div>
             </div>
             <div className="hero-visual">
+              <div className="hero-photo" aria-hidden="true" />
               <div className="hero-orbit orbit-one" /><div className="hero-orbit orbit-two" />
               <div className="float-pill pill-top"><span className="status-dot" /> Markets move. Stay informed.</div>
               <div className="hero-card">
